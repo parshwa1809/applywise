@@ -3,13 +3,13 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { useApp } from "@/lib/store";
-import { AiSection, CompaniesSection, ResumeSection, RolesSection, WhereSection } from "./Sections";
+import { AiSection, LookSection, ResumeSection, RolesSection, WhereSection } from "./Sections";
 import { Button, Magnetic } from "./ui";
 
 const STEPS = [
   { title: "What are you looking for?", sub: "Roles and seniority", body: <RolesSection /> },
   { title: "Where and how?", sub: "Location, remote, freshness", body: <WhereSection /> },
-  { title: "Which companies?", sub: "We read their job boards directly", body: <CompaniesSection /> },
+  { title: "Where should we look?", sub: "Company boards, JSearch, Apify", body: <LookSection /> },
   {
     title: "Your resume",
     sub: "So we can score and tailor",
@@ -26,9 +26,11 @@ export default function Setup() {
   const [[step, dir], setStep] = useState<[number, number]>([0, 1]);
   const f = useApp((s) => s.filters);
   const selected = useApp((s) => s.selected);
+  const sources = useApp((s) => s.sources);
+  const hasSource = (sources.boards && selected.length > 0) || (sources.jsearch.enabled && !!sources.jsearch.apiKey) || (sources.apify.enabled && !!sources.apify.token);
   const set = useApp((s) => s.set);
 
-  const canNext = step === 0 ? f.roles.length > 0 : step === 2 ? selected.length > 0 : true;
+  const canNext = step === 0 ? f.roles.length > 0 : step === 2 ? hasSource : true;
   const go = (d: number) => setStep(([s]) => [Math.max(0, Math.min(STEPS.length - 1, s + d)), d]);
   const finish = () => set({ onboarded: true, view: "discover", lastScan: null });
 
@@ -79,7 +81,7 @@ export default function Setup() {
           {step < STEPS.length - 1 ? (
             <Magnetic>
               <Button onClick={() => go(1)} disabled={!canNext}>
-                {canNext ? "Continue →" : step === 0 ? "Add a role to continue" : "Pick companies to continue"}
+                {canNext ? "Continue →" : step === 0 ? "Add a role to continue" : "Pick companies or add a key to continue"}
               </Button>
             </Magnetic>
           ) : (

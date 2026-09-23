@@ -50,6 +50,8 @@ export default function PhysicsField({ onPop, className }: { onPop?: (total: num
     let H = 0;
     let dpr = 1;
     const bodies: Body[] = [];
+    // exposed read-only for automated demos/tests (e.g. finding ghost bubbles to pop)
+    (canvas as HTMLCanvasElement & { __bodies?: Body[] }).__bodies = bodies;
     const parts: Particle[] = [];
     let popped = 0;
     const colors: Record<string, string> = {};

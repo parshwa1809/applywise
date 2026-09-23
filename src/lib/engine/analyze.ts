@@ -84,6 +84,8 @@ export interface FilterStats {
   age: number;
   experience: number;
   kept: number;
+  /** fresh, on-target postings dropped only for asking too many years — shown so the user can judge */
+  overYears?: { company: string; title: string; years: number; url: string }[];
 }
 
 export function titleMatches(title: string, f: SearchFilters): boolean {
@@ -127,7 +129,10 @@ export function analyze(raw: RawJob[], f: SearchFilters, resume: string, now = D
     if (f.maxAgeDays > 0 && r.postedAt && (now - Date.parse(r.postedAt)) / DAY > f.maxAgeDays) continue;
     stats.age++;
     const yrs = minYears(r.description);
-    if (f.maxYears > 0 && yrs !== null && yrs > f.maxYears) continue;
+    if (f.maxYears > 0 && yrs !== null && yrs > f.maxYears) {
+      (stats.overYears ??= []).push({ company: r.company, title: r.title, years: yrs, url: r.url });
+      continue;
+    }
     stats.experience++;
 
     const dedupeKey = `${r.company}|${r.title.toLowerCase()}|${r.location.toLowerCase()}`;

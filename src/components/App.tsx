@@ -34,11 +34,13 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <Nav />
+      {/* everything below reads saved state from localStorage, so render it only after mount to keep server and client HTML identical */}
+      {ready ? <Nav /> : <div className="h-[72px] border-b border-line/70" />}
       <main className="min-h-[calc(100vh-72px)]">
         {ready && (
           <AnimatePresence mode="wait">
-            <motion.div key={view} initial={{ opacity: 0, y: 14, filter: "blur(4px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} exit={{ opacity: 0, y: -10, filter: "blur(4px)" }} transition={{ duration: 0.22 }}>
+            {/* no filter/transform left on this wrapper after entering — either would break position:fixed children */}
+            <motion.div key={view} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0, transitionEnd: { transform: "none" } }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.22 }}>
               {view === "home" && <Home />}
               {view === "setup" && <Setup />}
               {view === "discover" && <Discover />}

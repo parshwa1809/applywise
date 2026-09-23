@@ -1,4 +1,6 @@
 export type Ats = "greenhouse" | "lever" | "ashby";
+/** Where a posting came from: a company ATS board, or an aggregator the user plugged a key into. */
+export type Source = Ats | "jsearch" | "apify";
 
 export interface Company {
   name: string;
@@ -33,7 +35,7 @@ export interface Job {
   id: string; // `${ats}:${slug}:${externalId}`
   company: string;
   industry: string;
-  ats: Ats;
+  ats: Source;
   title: string;
   location: string;
   workMode: WorkMode | "unknown";
@@ -59,11 +61,20 @@ export interface TailorResult {
   mode: "ai" | "offline";
   headline: string;
   summary: string;
+  /** set when the AI summary failed the truth guard (the original summary is used instead) */
+  summaryFlagged?: string;
+  coverFlagged?: string;
   bullets: TailoredBullet[];
   highlightSkills: string[];
   missingKeywords: string[];
   coverNote: string;
   createdAt: string;
+}
+
+export interface SourceSettings {
+  boards: boolean;
+  jsearch: { enabled: boolean; apiKey: string; datePosted: "today" | "3days" | "week" | "month"; maxQueries: number };
+  apify: { enabled: boolean; token: string; actorId: string; limit: number };
 }
 
 export type AiProvider = "gemini" | "openai" | "anthropic";

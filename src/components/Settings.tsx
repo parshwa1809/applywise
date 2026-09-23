@@ -1,15 +1,19 @@
 "use client";
 
 import { motion } from "motion/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApp } from "@/lib/store";
-import { AiSection, CompaniesSection, ResumeSection, RolesSection, WhereSection } from "./Sections";
+import { AiSection, LookSection, ResumeSection, RolesSection, WhereSection } from "./Sections";
 import { Button, Segmented } from "./ui";
 
 type Tab = "search" | "companies" | "resume" | "data";
 
 export default function Settings() {
-  const [tab, setTab] = useState<Tab>("search");
+  const [tab, setTab] = useState<Tab>(() => useApp.getState().settingsTab);
+  // a deep link (e.g. "Add JSearch / Apify") only applies once
+  useEffect(() => {
+    useApp.setState({ settingsTab: "search" });
+  }, []);
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6 sm:px-6">
       <h1 className="font-display text-4xl font-bold sm:text-5xl">Settings</h1>
@@ -21,7 +25,7 @@ export default function Settings() {
           onChange={setTab}
           options={[
             { value: "search", label: "Search" },
-            { value: "companies", label: "Companies" },
+            { value: "companies", label: "Sources" },
             { value: "resume", label: "Resume & AI" },
             { value: "data", label: "Data" },
           ]}
@@ -34,7 +38,7 @@ export default function Settings() {
             <WhereSection />
           </div>
         )}
-        {tab === "companies" && <CompaniesSection />}
+        {tab === "companies" && <LookSection />}
         {tab === "resume" && (
           <div className="space-y-12">
             <ResumeSection />
@@ -53,8 +57,9 @@ function DataSection() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const exportData = () => {
-    const { ai, ...rest } = useApp.getState();
-    const data = JSON.parse(JSON.stringify({ ...rest, ai: { ...ai, apiKey: "" } }));
+    const { ai, sources, ...rest } = useApp.getState();
+    // never put keys in a backup file
+    const data = JSON.parse(JSON.stringify({ ...rest, ai: { ...ai, keys: { gemini: "", openai: "", anthropic: "" } }, sources: { ...sources, jsearch: { ...sources.jsearch, apiKey: "" }, apify: { ...sources.apify, token: "" } } }));
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
     a.download = `applywise-backup-${new Date().toISOString().slice(0, 10)}.json`;
@@ -76,7 +81,7 @@ function DataSection() {
     <div className="space-y-6">
       <div className="rounded-3xl border border-line bg-card p-5">
         <div className="font-display text-lg font-bold">Your data stays with you</div>
-        <p className="mt-1 text-sm text-ink-2">Everything — resume, saved jobs, tailored versions, API key — lives in this browser&apos;s storage. Nothing is sent to an Applywise server beyond the single request that fetches job boards or tailors a resume.</p>
+        <p className="mt-1 text-sm text-ink-2">Everything — resume, saved jobs, tailored versions, API keys — lives in this browser&apos;s storage. Keys are sent only with the request that uses them and are never saved on a server. Backups leave keys out.</p>
       </div>
       <div className="flex flex-wrap gap-3">
         <Button variant="soft" onClick={exportData}>

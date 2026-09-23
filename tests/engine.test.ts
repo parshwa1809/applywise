@@ -102,3 +102,12 @@ describe("tailor", () => {
     expect(r.bullets[0].flagged).toMatch(/99%/);
   });
 });
+
+import { explainFunnel } from "../src/lib/engine/funnel";
+describe("explainFunnel", () => {
+  it("says in one line which filter emptied the boards", () => {
+    const m = explainFunnel({ total: 9000, title: 147, location: 68, age: 4, experience: 0, overYears: [{ company: "A", title: "PM", years: 6 }, { company: "B", title: "PM", years: 5 }] }, { maxYears: 4 });
+    expect(m).toBe("Company boards found no new matches — the 4 fresh ones need 5+ years (your limit is 4). Raise it in Settings → Search to see them.");
+    expect(explainFunnel({ total: 900, title: 0, location: 0, age: 0, experience: 0 })).toMatch(/no titles fit your roles/);
+  });
+});

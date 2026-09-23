@@ -76,3 +76,18 @@ export function findSkills(text: string): string[] {
   const found = new Set(SKILLS.filter((s) => re(s).test(t)).map((s) => ALIASES[s] ?? s));
   return [...found];
 }
+
+/**
+ * Concrete tools and technologies — the things a rewrite must never claim unless the resume does.
+ * (Soft/business words like "growth" or "launch" are fair game for reframing.)
+ */
+export const HARD_SKILLS = new Set<string>([
+  "jira", "confluence", "figma", "amplitude", "mixpanel", "looker", "tableau", "power bi",
+  "sql", "python", "excel", "machine learning", "ml", "deep learning", "nlp", "llm", "generative ai", "rag",
+  "agents", "agentic", "prompt engineering", "etl", "dbt", "snowflake", "databricks", "bigquery", "redshift",
+  "spark", "airflow", "pytorch", "tensorflow", "langchain", "openai", "vector database",
+  "javascript", "typescript", "react", "next.js", "node", "java", "golang", "rust", "c++", "c#", ".net", "ruby",
+  "rails", "php", "kotlin", "swift", "ios", "android", "graphql", "rest api", "restful", "grpc", "microservices",
+  "aws", "gcp", "azure", "kubernetes", "docker", "terraform", "ci/cd", "postgres", "mysql", "mongodb", "redis",
+  "kafka", "html", "css", "tailwind", "salesforce", "hubspot", "hipaa", "a/b testing", "okrs",
+]);

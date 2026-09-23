@@ -39,7 +39,7 @@ export default function Home() {
             Skip the ghosts.
           </h1>
           <p className="mt-6 max-w-xl text-lg text-ink-2">
-            Applywise scans companies&apos; own job boards, flags stale and evergreen listings, scores every role against your resume, and tailors it — without ever inventing a fact.
+            Applywise scans company job boards, JSearch and Apify, flags stale and evergreen listings, scores every role against your resume, and tailors it — without ever inventing a fact.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Magnetic strength={0.4}>
@@ -71,7 +71,7 @@ export default function Home() {
         <h2 className="font-display text-4xl font-bold sm:text-5xl">How it works</h2>
         <div className="mt-10 grid gap-5 md:grid-cols-3">
           <TiltCard n="01" title="Scan the source" color="var(--sky)">
-            Reads Greenhouse, Lever and Ashby boards directly. Every listing is live at the company, not a repost of a repost.
+            Reads Greenhouse, Lever and Ashby boards directly, and plugs into JSearch (Indeed, ZipRecruiter, Dice…) and Apify career-site feeds with your own key.
           </TiltCard>
           <TiltCard n="02" title="Swipe with signal" color="var(--lime)">
             Each card shows your match score, the skills you have vs. they want, and ghost-job signals like age, thin descriptions or talent-pool wording.
@@ -82,7 +82,7 @@ export default function Home() {
         </div>
         <div className="mt-16 rounded-[36px] bg-ink p-8 text-bg sm:p-12">
           <div className="grid gap-8 md:grid-cols-3">
-            <Stat k="0" v="accounts needed" />
+            <Stat k="3" v="sources — company boards, JSearch, Apify" />
             <Stat k="100%" v="of your data stays in your browser" />
             <Stat k="BYO" v="AI key — Gemini, OpenAI or Claude, optional" />
           </div>

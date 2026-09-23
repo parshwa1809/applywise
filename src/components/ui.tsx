@@ -80,27 +80,48 @@ export function Segmented<T extends string>({
   id,
   className,
 }: {
-  options: { value: T; label: ReactNode }[];
+  options: { value: T; label: ReactNode; hint?: string }[];
   value: T;
   onChange: (v: T) => void;
   id: string;
   className?: string;
 }) {
+  const [hover, setHover] = useState<T | null>(null);
   return (
     <div className={clsx("relative inline-flex rounded-full border border-line bg-card p-1", className)} role="tablist">
       {options.map((o) => {
         const active = o.value === value;
         return (
-          <button
-            key={o.value}
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(o.value)}
-            className={clsx("relative z-10 rounded-full px-4 py-1.5 text-sm font-semibold transition-colors", active ? "text-brand-ink" : "text-ink-2 hover:text-ink")}
-          >
-            {active && <motion.span layoutId={`seg-${id}`} className="absolute inset-0 -z-10 rounded-full bg-brand" transition={spring} />}
-            {o.label}
-          </button>
+          <div key={o.value} className="relative" onPointerEnter={() => o.hint && setHover(o.value)} onPointerLeave={() => setHover(null)}>
+            <button
+              role="tab"
+              aria-selected={active}
+              aria-describedby={o.hint ? `${id}-${o.value}-hint` : undefined}
+              onClick={() => onChange(o.value)}
+              onFocus={() => o.hint && setHover(o.value)}
+              onBlur={() => setHover(null)}
+              className={clsx("relative z-10 rounded-full px-4 py-1.5 text-sm font-semibold transition-colors", active ? "text-brand-ink" : "text-ink-2 hover:text-ink")}
+            >
+              {active && <motion.span layoutId={`seg-${id}`} className="absolute inset-0 -z-10 rounded-full bg-brand" transition={spring} />}
+              {o.label}
+            </button>
+            <AnimatePresence>
+              {o.hint && hover === o.value && (
+                <motion.div
+                  id={`${id}-${o.value}-hint`}
+                  role="tooltip"
+                  initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.96 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 32 }}
+                  className="pointer-events-none absolute left-1/2 top-full z-50 mt-2.5 w-60 -translate-x-1/2 rounded-xl bg-ink px-3 py-2 text-left text-xs font-medium leading-relaxed text-bg shadow-lift"
+                >
+                  <span className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-ink" />
+                  {o.hint}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         );
       })}
     </div>

@@ -1,3 +1,4 @@
+import { rateLimit } from "@/lib/rateLimit";
 import { analyze } from "@/lib/engine/analyze";
 import { collectCompany, type RawJob } from "@/lib/engine/collect";
 import { demoJobs } from "@/lib/engine/demo";
@@ -36,6 +37,8 @@ async function pool<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Prom
 }
 
 export async function POST(req: Request) {
+  const limited = rateLimit(req, "jobs");
+  if (limited) return limited;
   let body: { companies?: Company[]; filters?: SearchFilters; resume?: string };
   try {
     body = await req.json();

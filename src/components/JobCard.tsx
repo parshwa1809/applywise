@@ -59,6 +59,7 @@ export function JobCard({ job, compact = false, className }: { job: Job; compact
         <Pill tone="brand">{modeLabel[job.workMode]}</Pill>
         {job.salary && <Pill tone="good">{job.salary}</Pill>}
         <Pill>{timeAgo(job.postedAt)}</Pill>
+        {(job.ats === "jsearch" || job.ats === "apify") && <Pill>{viaLabel(job)}</Pill>}
         {job.minYears !== null && <Pill>{job.minYears}+ yrs</Pill>}
         <GhostMeter ghost={job.ghost} />
       </div>
@@ -97,4 +98,12 @@ export function JobCard({ job, compact = false, className }: { job: Job; compact
       )}
     </div>
   );
+}
+
+/** "via Apify · Greenhouse" — the aggregator we used, plus the site it found the posting on. */
+export function viaLabel(job: Pick<Job, "ats" | "industry">) {
+  const agg = job.ats === "jsearch" ? "JSearch" : "Apify";
+  const site = job.industry.replace(/^via\s*/i, "").trim();
+  if (!site || site.toLowerCase() === agg.toLowerCase()) return `via ${agg}`;
+  return `via ${agg} · ${site.replace(/\b\w/g, (c) => c.toUpperCase())}`;
 }

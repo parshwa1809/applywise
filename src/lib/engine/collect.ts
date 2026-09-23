@@ -1,9 +1,9 @@
-import type { Ats, Company } from "../types";
+import type { Company, Source } from "../types";
 import { htmlToText } from "./text";
 
 /** A posting as returned by a company's public job board, normalized across ATS vendors. */
 export interface RawJob {
-  ats: Ats;
+  ats: Source;
   company: string;
   industry: string;
   slug: string;

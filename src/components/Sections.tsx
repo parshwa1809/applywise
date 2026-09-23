@@ -3,9 +3,11 @@
 import { clsx } from "clsx";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
+import { APIFY_MIN, clampApify } from "@/lib/engine/aggregators";
 import { companyKey, useApp } from "@/lib/store";
 import { DEFAULT_MODELS } from "@/lib/engine/tailor";
-import type { AiProvider, Ats, Company, WorkMode } from "@/lib/types";
+import type { AiProvider, Ats, Company, SourceSettings, WorkMode } from "@/lib/types";
+import { jsearchQueries } from "@/lib/engine/aggregators";
 import { DIRECTORY, INDUSTRIES } from "@/lib/useScan";
 import { Button, Segmented, Switch, TagInput, ToggleChip, spring } from "./ui";
 
@@ -96,6 +98,144 @@ export function WhereSection() {
   );
 }
 
+export function SourcesSection() {
+  const sources = useApp((s) => s.sources);
+  const f = useApp((s) => s.filters);
+  const set = useApp((s) => s.set);
+  const upd = (p: Partial<SourceSettings>) => set({ sources: { ...sources, ...p } });
+  const js = sources.jsearch;
+  const ap = sources.apify;
+  const queries = jsearchQueries(f, js.maxQueries);
+  return (
+    <div className="space-y-4">
+      <Label title="Where should we look?" hint="Mix and match. Company boards are free; JSearch and Apify search far wider with your own key." />
+
+      <SourceCard
+        on={sources.boards}
+        onToggle={(boards) => upd({ boards })}
+        title="Company job boards"
+        badge="Free · no key"
+        color="var(--sky)"
+        blurb="Reads Greenhouse, Lever and Ashby boards directly for the companies you pick below. Every listing is live at the source."
+      />
+
+      <SourceCard
+        on={js.enabled}
+        onToggle={(enabled) => upd({ jsearch: { ...js, enabled } })}
+        title="JSearch"
+        badge="RapidAPI key"
+        color="var(--amber)"
+        blurb="Searches Google for Jobs — Indeed, ZipRecruiter, Dice, company sites and more — by role and location."
+      >
+        <KeyField value={js.apiKey} onChange={(apiKey) => upd({ jsearch: { ...js, apiKey } })} placeholder="RapidAPI key (X-RapidAPI-Key)" href="https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch" linkLabel="Get a free key ↗" />
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="text-sm text-ink-2">
+            Posted within
+            <select value={js.datePosted} onChange={(e) => upd({ jsearch: { ...js, datePosted: e.target.value as SourceSettings["jsearch"]["datePosted"] } })} className="mt-1 block h-10 w-full rounded-xl border border-line bg-card px-3 text-sm text-ink outline-none focus:border-brand">
+              <option value="today">Today</option>
+              <option value="3days">3 days</option>
+              <option value="week">A week</option>
+              <option value="month">A month</option>
+            </select>
+          </label>
+          <label className="text-sm text-ink-2">
+            Searches per scan
+            <input type="number" min={1} max={20} value={js.maxQueries} onChange={(e) => upd({ jsearch: { ...js, maxQueries: Math.max(1, Math.min(20, Number(e.target.value) || 1)) } })} className="mt-1 block h-10 w-full rounded-xl border border-line bg-card px-3 text-sm text-ink outline-none focus:border-brand" />
+          </label>
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-ink-3">
+          Each scan uses <b className="text-ink-2">{queries.length}</b> request{queries.length === 1 ? "" : "s"} of your quota (the free plan allows 200 a month):{" "}
+          {queries.map((q) => `“${q}”`).join(", ")}
+        </p>
+      </SourceCard>
+
+      <SourceCard
+        on={ap.enabled}
+        onToggle={(enabled) => upd({ apify: { ...ap, enabled } })}
+        title="Apify"
+        badge="Apify token"
+        color="var(--coral)"
+        blurb="Runs a job-feed actor across 175k+ company career sites (Workday, iCIMS, Greenhouse, Lever…) filtered by your roles and experience."
+      >
+        <KeyField value={ap.token} onChange={(token) => upd({ apify: { ...ap, token } })} placeholder="Apify API token" href="https://console.apify.com/settings/integrations" linkLabel="Get your token ↗" />
+        <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_140px]">
+          <label className="text-sm text-ink-2">
+            Actor
+            <input value={ap.actorId} onChange={(e) => upd({ apify: { ...ap, actorId: e.target.value.trim() } })} className="mt-1 block h-10 w-full rounded-xl border border-line bg-card px-3 font-mono text-xs text-ink outline-none focus:border-brand" />
+          </label>
+          <label className="text-sm text-ink-2">
+            Max jobs
+            <input type="number" min={APIFY_MIN} max={1000} step={50} value={ap.limit} onChange={(e) => upd({ apify: { ...ap, limit: Number(e.target.value) || APIFY_MIN } })} onBlur={() => upd({ apify: { ...ap, limit: clampApify(ap.limit) } })} className="mt-1 block h-10 w-full rounded-xl border border-line bg-card px-3 text-sm text-ink outline-none focus:border-brand" />
+          </label>
+        </div>
+        <p className="mt-3 text-xs leading-relaxed text-ink-3">The Fantastic.jobs actor needs at least 200 jobs per run. Apify bills per result on your account, and a run can take 1–3 minutes. Cards start dropping in from the other sources meanwhile.</p>
+      </SourceCard>
+    </div>
+  );
+}
+
+function SourceCard({ on, onToggle, title, badge, blurb, color, children }: { on: boolean; onToggle: (v: boolean) => void; title: string; badge: string; blurb: string; color: string; children?: React.ReactNode }) {
+  return (
+    <motion.div layout transition={spring} className={clsx("rounded-3xl border-2 bg-card p-5 transition-colors", on ? "border-brand" : "border-line")}>
+      <div className="flex items-start gap-4">
+        <motion.div animate={{ rotate: on ? 0 : -8, scale: on ? 1 : 0.9 }} transition={spring} className="mt-0.5 h-10 w-10 shrink-0 rounded-2xl" style={{ background: color, opacity: on ? 1 : 0.45 }} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-display text-lg font-bold">{title}</span>
+            <span className="rounded-full bg-bg-2 px-2 py-0.5 text-[11px] font-semibold text-ink-2">{badge}</span>
+          </div>
+          <p className="mt-1 text-sm text-ink-2">{blurb}</p>
+        </div>
+        <Switch on={on} onChange={onToggle} label={`Use ${title}`} />
+      </div>
+      <AnimatePresence initial={false}>
+        {on && children && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={spring} className="overflow-hidden">
+            <div className="pt-4">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+function KeyField({ value, onChange, placeholder, href, linkLabel }: { value: string; onChange: (v: string) => void; placeholder: string; href: string; linkLabel: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div>
+      <div className="flex gap-2">
+        <input type={show ? "text" : "password"} value={value} onChange={(e) => onChange(e.target.value.trim())} placeholder={placeholder} autoComplete="off" className="h-11 min-w-0 flex-1 rounded-2xl border border-line bg-bg px-4 font-mono text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/15" />
+        <Button variant="soft" size="md" onClick={() => setShow((v) => !v)}>
+          {show ? "Hide" : "Show"}
+        </Button>
+      </div>
+      <div className="mt-1.5 flex items-center gap-2 text-xs">
+        <a href={href} target="_blank" rel="noreferrer" className="font-semibold text-brand hover:underline">
+          {linkLabel}
+        </a>
+        <span className="text-ink-3">· stored only in this browser</span>
+      </div>
+    </div>
+  );
+}
+
+/** Sources + (when company boards are on) the company picker. */
+export function LookSection() {
+  const boards = useApp((s) => s.sources.boards);
+  return (
+    <div className="space-y-10">
+      <SourcesSection />
+      <AnimatePresence initial={false}>
+        {boards && (
+          <motion.div key="companies" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }} transition={spring}>
+            <CompaniesSection />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export function CompaniesSection() {
   const industries = useApp((s) => s.industries);
   const selected = useApp((s) => s.selected);
@@ -121,7 +261,7 @@ export function CompaniesSection() {
   return (
     <div className="space-y-8">
       <div>
-        <Label title="Pick industries" hint={`A starter directory of ${DIRECTORY.length} companies with public job boards. Tap to add all companies in an industry.`} />
+        <Label title="Pick companies by industry" hint={`${DIRECTORY.length} companies with public job boards are built in. Tap an industry to add all of them.`} />
         <div className="flex flex-wrap gap-2">
           {INDUSTRIES.map((i) => (
             <ToggleChip key={i.id} on={industries.includes(i.id)} onClick={() => toggleIndustry(i.id)}>
@@ -229,11 +369,32 @@ export function ResumeSection() {
   const [drag, setDrag] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
+  const [busy, setBusy] = useState(false);
   const readFile = async (file: File) => {
-    if (/\.(txt|md|markdown)$/i.test(file.name) || file.type.startsWith("text/")) {
+    setMsg(null);
+    if (/\.(txt|md|markdown)$/i.test(file.name)) {
       set({ resume: await file.text() });
       setMsg(`Loaded ${file.name}`);
-    } else setMsg("For now, upload .txt or .md — or paste your resume text directly.");
+      return;
+    }
+    if (!/\.(pdf|docx)$/i.test(file.name)) {
+      setMsg(/\.doc$/i.test(file.name) ? "Old .doc files aren't supported — save it as .docx or PDF." : "Upload a PDF, Word (.docx), .txt or .md file.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/resume", { method: "POST", body: fd });
+      const data = (await res.json()) as { text?: string; error?: string };
+      if (!res.ok || !data.text) throw new Error(data.error ?? "Couldn't read that file.");
+      set({ resume: data.text });
+      setMsg(`Loaded ${file.name} — check the text below and fix anything that came through oddly.`);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Couldn't read that file.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -243,7 +404,7 @@ export function ResumeSection() {
         <input value={name} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Alex" className="h-12 w-full max-w-sm rounded-2xl border border-line bg-card px-4 outline-none focus:border-brand focus:ring-4 focus:ring-brand/15" />
       </div>
       <div>
-        <Label title="Your resume" hint="Paste the text, or drop a .txt/.md file. Put each achievement on its own line starting with • or -. It never leaves your browser except when you tailor." />
+        <Label title="Your resume" hint="Upload a PDF or Word file, or paste the text. Each achievement should be on its own line starting with • or -. Your resume is only sent to the server to read the file or tailor it — never stored." />
         <motion.div
           onDragOver={(e) => {
             e.preventDefault();
@@ -265,11 +426,16 @@ export function ResumeSection() {
             onChange={(e) => set({ resume: e.target.value })}
             rows={12}
             placeholder={"Jane Doe — Product Manager\n\n• Led personalization roadmap for a 200K MAU app, lifting retention 23%\n• Ran 6 A/B tests on onboarding…"}
-            className="block w-full resize-y rounded-3xl bg-transparent p-5 font-mono text-sm leading-relaxed outline-none placeholder:text-ink-3"
+            className="block w-full resize-y rounded-3xl bg-transparent p-5 pb-16 font-mono text-sm leading-relaxed outline-none placeholder:text-ink-3"
           />
-          <label className="absolute bottom-3 right-3 cursor-pointer rounded-full bg-bg-2 px-3 py-1.5 text-xs font-semibold text-ink-2 hover:bg-line">
-            Upload file
-            <input type="file" accept=".txt,.md,.markdown,text/plain" className="hidden" onChange={(e) => e.target.files?.[0] && readFile(e.target.files[0])} />
+          <label className="absolute bottom-3 right-3 inline-flex cursor-pointer items-center gap-2 rounded-full bg-brand px-4 py-2 text-xs font-semibold text-brand-ink shadow-soft hover:brightness-110">
+            {busy ? (
+              <motion.span className="h-3 w-3 rounded-full border-2 border-current border-t-transparent" animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }} />
+            ) : (
+              <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13V3M6 7l4-4 4 4M4 13v3h12v-3" /></svg>
+            )}
+            {busy ? "Reading…" : "Upload PDF / Word"}
+            <input type="file" accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" className="hidden" disabled={busy} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) readFile(f); }} />
           </label>
         </motion.div>
         <div className="mt-2 flex items-center justify-between text-xs text-ink-3">
@@ -286,6 +452,11 @@ export function AiSection() {
   const set = useApp((s) => s.set);
   const [show, setShow] = useState(false);
   const upd = (p: Partial<typeof ai>) => set({ ai: { ...ai, ...p } });
+  const key = ai.keys[ai.provider];
+  const model = ai.models[ai.provider];
+  const setKey = (v: string) => upd({ keys: { ...ai.keys, [ai.provider]: v } });
+  const setModel = (v: string) => upd({ models: { ...ai.models, [ai.provider]: v } });
+  const names: Record<AiProvider, string> = { gemini: "Gemini", openai: "OpenAI", anthropic: "Claude" };
   const links: Record<AiProvider, string> = {
     gemini: "https://aistudio.google.com/apikey",
     openai: "https://platform.openai.com/api-keys",
@@ -297,19 +468,28 @@ export function AiSection() {
       <Segmented<AiProvider>
         id="provider"
         value={ai.provider}
-        onChange={(provider) => upd({ provider, model: "" })}
-        options={[
-          { value: "gemini", label: "Gemini" },
-          { value: "openai", label: "OpenAI" },
-          { value: "anthropic", label: "Claude" },
-        ]}
+        onChange={(provider) => upd({ provider })}
+        options={(["gemini", "openai", "anthropic"] as AiProvider[]).map((p) => ({
+          value: p,
+          label: (
+            <span className="inline-flex items-center gap-1.5">
+              {names[p]}
+              {ai.keys[p] && <span className="h-1.5 w-1.5 rounded-full bg-good" aria-label="key saved" />}
+            </span>
+          ),
+          hint: ai.keys[p] ? `${names[p]} key saved${p === ai.provider ? " — used for tailoring" : ""}` : `No ${names[p]} key yet`,
+        }))}
       />
+      <p className="text-xs text-ink-3">
+        Each provider keeps its own key. Tailoring uses the selected one: <b className="text-ink-2">{names[ai.provider]}</b>
+        {key ? "." : " — paste its key below."}
+      </p>
       <div className="flex gap-2">
         <input
           type={show ? "text" : "password"}
-          value={ai.apiKey}
-          onChange={(e) => upd({ apiKey: e.target.value.trim() })}
-          placeholder="Paste API key"
+          value={key}
+          onChange={(e) => setKey(e.target.value.trim())}
+          placeholder={`Paste your ${names[ai.provider]} API key`}
           autoComplete="off"
           className="h-12 min-w-0 flex-1 rounded-2xl border border-line bg-card px-4 font-mono text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/15"
         />
@@ -324,7 +504,7 @@ export function AiSection() {
         <span className="text-ink-3">·</span>
         <label className="flex items-center gap-2 text-ink-2">
           Model
-          <input value={ai.model} onChange={(e) => upd({ model: e.target.value })} placeholder={DEFAULT_MODELS[ai.provider]} className="h-9 w-52 rounded-xl border border-line bg-card px-3 font-mono text-xs outline-none focus:border-brand" />
+          <input value={model} onChange={(e) => setModel(e.target.value)} placeholder={DEFAULT_MODELS[ai.provider]} className="h-9 w-52 rounded-xl border border-line bg-card px-3 font-mono text-xs outline-none focus:border-brand" />
         </label>
       </div>
     </div>

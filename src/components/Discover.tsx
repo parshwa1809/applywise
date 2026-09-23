@@ -74,10 +74,10 @@ export default function Discover() {
           <p className="mt-1 text-ink-2">
             {lastScan ? (
               <>
-                <Ticker value={queue.length} className="font-semibold text-ink" /> roles to review · scanned {lastScan.reachable}/{lastScan.companies} boards {timeAgo(lastScan.at)}
+                <Ticker value={queue.length} className="font-semibold text-ink" /> roles to review · scanned {timeAgo(lastScan.at)}
               </>
             ) : (
-              "Scanning company job boards directly — no reposted LinkedIn noise."
+              "Scanning company boards and your connected sources — no reposted LinkedIn noise."
             )}
           </p>
         </div>
@@ -87,9 +87,9 @@ export default function Discover() {
             value={sort}
             onChange={setSort}
             options={[
-              { value: "match", label: "Best fit" },
-              { value: "real", label: "Least ghosty" },
-              { value: "new", label: "Newest" },
+              { value: "match", label: "Best fit", hint: "Match score with your resume, minus a penalty for ghost-job signals" },
+              { value: "real", label: "Least ghosty", hint: "Most trustworthy listings first (fewest ghost signals), ties broken by match" },
+              { value: "new", label: "Newest", hint: "Most recently posted first" },
             ]}
           />
           {progress.running ? (
@@ -109,8 +109,38 @@ export default function Discover() {
         </div>
       </div>
 
+      {lastScan?.sources && lastScan.sources.length > 0 && !progress.running && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {lastScan.sources.map((r) => (
+            <span
+              key={r.label}
+              title={r.error ?? (r.skipped ? "JSearch and Apify use your paid quota, so they run at most once a day. Change your search to run them again sooner." : undefined)}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${r.error ? "bg-bad/10 text-bad" : "bg-card text-ink-2 ring-1 ring-line"}`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${r.error ? "bg-bad" : r.skipped ? "bg-ink-3" : "bg-good"}`} />
+              {r.label}
+              {r.label === "Company boards" && !r.error ? ` · ${lastScan.reachable}/${lastScan.companies} boards` : ""} · {r.error ? "failed" : r.skipped ? r.skipped : `${r.found} match${r.found === 1 ? "" : "es"}`}
+            </span>
+          ))}
+        </div>
+      )}
+
       <ScanBar progress={progress} />
       {progress.error && <div className="mt-4 rounded-2xl border border-bad/30 bg-bad/10 p-4 text-sm text-bad">{progress.error}</div>}
+      {!progress.error && !!progress.warnings?.length && (
+        <div className="mt-4 rounded-2xl border border-warn/30 bg-warn/10 p-4 text-sm text-warn">
+          {progress.warnings.map((w) => (
+            <div key={w}>⚠ {w}</div>
+          ))}
+        </div>
+      )}
+      {!progress.running && !!progress.notes?.length && (
+        <div className="mt-3 rounded-2xl border border-line bg-card p-4 text-sm text-ink-2">
+          {progress.notes.map((w) => (
+            <div key={w}>ⓘ {w}</div>
+          ))}
+        </div>
+      )}
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_280px]">
         <div className="relative mx-auto h-[620px] w-full max-w-[560px]">
@@ -159,8 +189,8 @@ export default function Discover() {
             <p className="mt-3 text-xs leading-relaxed text-ink-3">Drag the card: fling right to save, left to skip, up to tailor your resume right away. Space opens details.</p>
           </div>
           <div className="rounded-3xl bg-ink p-5 text-bg">
-            <div className="font-display text-lg font-bold">Why no LinkedIn?</div>
-            <p className="mt-2 text-sm opacity-80">Applywise reads each company&apos;s own job board (Greenhouse, Lever, Ashby), so every role is live at the source. Ghost signals flag stale or evergreen listings.</p>
+            <div className="font-display text-lg font-bold">Where these come from</div>
+            <p className="mt-2 text-sm opacity-80">Company boards (Greenhouse, Lever, Ashby) are read directly. With your keys, JSearch adds Indeed, ZipRecruiter, Dice and more, and Apify adds 175k+ career sites. Duplicates are merged, and ghost signals flag stale or evergreen listings.</p>
           </div>
         </aside>
       </div>
@@ -297,7 +327,7 @@ function ScanBar({ progress }: { progress: ReturnType<typeof useScan>["progress"
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2 font-semibold">
                 <motion.span className="inline-block h-2.5 w-2.5 rounded-full bg-brand" animate={{ scale: [1, 1.6, 1], opacity: [1, 0.5, 1] }} transition={{ repeat: Infinity, duration: 1 }} />
-                Scanning {progress.done}/{progress.total} companies
+                Scanning {progress.done}/{progress.total} sources
               </div>
               <div className="text-ink-2">
                 <Ticker value={progress.found} className="font-bold text-ink" /> matches
@@ -323,6 +353,13 @@ function ScanBar({ progress }: { progress: ReturnType<typeof useScan>["progress"
 }
 
 function EmptyDeck({ running, hasScan, onScan }: { running: boolean; hasScan: boolean; onScan: () => void }) {
+  const sources = useApp((s) => s.sources);
+  const set = useApp((s) => s.set);
+  const missing = [
+    !(sources.jsearch.enabled && sources.jsearch.apiKey) && "JSearch",
+    !(sources.apify.enabled && sources.apify.token) && "Apify",
+  ].filter(Boolean) as string[];
+  const nudge = hasScan && !running && missing.length > 0;
   return (
     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="grid h-full place-items-center rounded-[28px] border-2 border-dashed border-line p-8 text-center">
       <div>
@@ -331,11 +368,28 @@ function EmptyDeck({ running, hasScan, onScan }: { running: boolean; hasScan: bo
         </motion.div>
         <div className="font-display text-2xl font-bold">{running ? "Finding real roles…" : hasScan ? "Inbox zero!" : "Ready when you are"}</div>
         <p className="mx-auto mt-2 max-w-xs text-ink-2">
-          {running ? "Cards will drop in as each company's board comes back." : hasScan ? "You've reviewed everything. Rescan later, or widen your filters in Settings." : "Run your first scan to fill the deck."}
+          {running ? "Cards will drop in as each source comes back." : hasScan ? "You've reviewed everything. Rescan later, or widen your filters in Settings." : "Run your first scan to fill the deck."}
         </p>
+        {nudge && (
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, ...spring }} className="mx-auto mt-5 max-w-sm rounded-2xl border border-brand/40 bg-brand-soft p-4 text-left">
+            <div className="font-display text-base font-bold text-ink">Want more jobs?</div>
+            <p className="mt-1 text-sm text-ink-2">
+              Add your {missing.join(" and ")} {missing.length > 1 ? "keys" : "key"} to search far beyond the company boards
+              {missing.includes("JSearch") ? " — JSearch adds Indeed, ZipRecruiter, Dice and more" : ""}
+              {missing.includes("Apify") ? `${missing.includes("JSearch") ? ", and" : " —"} Apify adds 175k+ company career sites` : ""}.
+            </p>
+            <div className="mt-3">
+              <Button size="sm" onClick={() => set({ view: "settings", settingsTab: "companies" })}>
+                Add {missing.join(" / ")} →
+              </Button>
+            </div>
+          </motion.div>
+        )}
         {!running && (
           <div className="mt-5">
-            <Button onClick={onScan}>{hasScan ? "Rescan now" : "Start scanning"}</Button>
+            <Button variant={nudge ? "soft" : "brand"} onClick={onScan}>
+              {hasScan ? "Rescan now" : "Start scanning"}
+            </Button>
           </div>
         )}
       </div>
