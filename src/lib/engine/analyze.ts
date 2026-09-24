@@ -169,6 +169,35 @@ const excludedBy = (title: string, f: Pick<SearchFilters, "roles" | "excludeTitl
   return effectiveExcludes(f).active.some((x) => new RegExp(`\\b${escapeRe(x)}(s|ship)?\\b`).test(t));
 };
 
+/**
+ * Was this role already collected by an earlier scan? True when a scanned role is a broader version of it
+ * ("product manager" covers "ai product manager": same core phrase, fewer extra words), so narrowing a
+ * role only filters, while a new or broader role needs a rescan.
+ */
+export function roleCoveredBy(role: string, scannedRoles: string[]): boolean {
+  const words = normalizeTitle(role).trim().split(" ").filter(Boolean);
+  const head = words.slice(-2).join(" ");
+  return scannedRoles.some((s) => {
+    const sw = normalizeTitle(s).trim().split(" ").filter(Boolean);
+    return sw.slice(-2).join(" ") === head && sw.every((w) => words.includes(w));
+  });
+}
+
+/** What changed since the last scan that the saved pool can't cover (so a Rescan is needed). */
+export function scanGaps(
+  scope: { roles: string[]; companies: string[]; locations: string[]; paid: boolean } | undefined,
+  now: { roles: string[]; companies: string[]; locations: string[]; paidOn: boolean },
+): { roles: string[]; companies: number; cities: string[] } | null {
+  if (!scope) return null;
+  const roles = now.roles.filter((r) => !roleCoveredBy(r, scope.roles));
+  const had = new Set(scope.companies);
+  const companies = now.companies.filter((c) => !had.has(c)).length;
+  const hadCities = new Set(scope.locations.map((l) => l.toLowerCase().trim()));
+  // new cities only matter for JSearch/Apify searches; company boards already return every location
+  const cities = now.paidOn ? now.locations.filter((l) => !hadCities.has(l.toLowerCase().trim())) : [];
+  return roles.length || companies || cities.length ? { roles, companies, cities } : null;
+}
+
 export function titleMatches(title: string, f: SearchFilters): boolean {
   if (excludedBy(title, f)) return false;
   if (!f.roles.length) return true;
@@ -197,6 +226,7 @@ export const POOL_MAX_AGE_DAYS = 120;
  */
 export function jobVisible(j: Pick<Job, "title" | "location" | "workMode" | "postedAt" | "minYears">, f: SearchFilters, now = Date.now()): boolean {
   if (excludedBy(j.title, f)) return false;
+  if (f.roles.length && !f.roles.some((r) => roleMatchesTitle(r, j.title))) return false;
   if (!locationMatches(j.location === "—" ? "" : j.location, j.workMode, f)) return false;
   if (f.maxAgeDays > 0 && j.postedAt && (now - Date.parse(j.postedAt)) / DAY > f.maxAgeDays) return false;
   if (f.maxYears > 0 && j.minYears !== null && j.minYears > f.maxYears) return false;

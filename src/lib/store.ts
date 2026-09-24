@@ -28,6 +28,8 @@ export interface ScanStats {
   postings: number;
   kept: number;
   sources?: SourceResult[];
+  /** what this scan collected for — used to tell the user when a settings change needs a rescan */
+  scope?: { roles: string[]; companies: string[]; locations: string[]; paid: boolean };
 }
 
 export const DEFAULT_SOURCES: SourceSettings = {
@@ -208,6 +210,7 @@ export const useApp = create<State>()(
             ...p.filters,
             // older versions offered a "manager, " chip; strip stray punctuation from saved tags
             excludeTitle: (p.filters?.excludeTitle ?? current.filters.excludeTitle)
+              .filter((x) => !/^\s*manager\s*,\s*$/i.test(x)) // the old "manager, " suggestion hid every PM job
               .map((x) => x.replace(/^[\s,;.|/]+|[\s,;.|/]+$/g, "").trim())
               .filter(Boolean),
           },

@@ -66,3 +66,25 @@ export function demoJobs(c: Company): RawJob[] {
     };
   });
 }
+
+/**
+ * Demo-mode stand-in for an AI tailoring call (APPLYWISE_DEMO=1 only). It rewrites bullets toward the
+ * job's language and deliberately inflates one, so the real truth guards can be seen rejecting it.
+ */
+export function demoTailorRaw(job: { company: string; title: string }, bullets: string[], summary: string): Record<string, unknown> {
+  const focus = /growth|consumer/i.test(job.title) ? "growth" : /ai|data|platform/i.test(job.title) ? "AI and data" : "product";
+  return {
+    headline: `${job.title} · experimentation, personalization, ${focus}`,
+    summary: summary || `Product manager focused on ${focus} outcomes.`,
+    bullets: bullets.slice(0, 8).map((b, i) => {
+      if (/proof-of-concept/i.test(b))
+        // the "AI" overreaches here: drops the POC qualifier and invents a metric — the guard should reject it
+        return { original: b, tailored: b.replace(/proof-of-concept /i, "").replace(/\.?$/, ", cutting reporting time by 40%"), keywords: ["data platform"] };
+      if (i % 2 === 0) return { original: b, tailored: b.replace(/\.?$/, `, informing the ${focus} roadmap`), keywords: [focus] };
+      return { original: b, tailored: b, keywords: [] };
+    }),
+    highlightSkills: ["A/B Testing", "SQL", "Roadmap Planning"],
+    missingKeywords: ["lifecycle marketing"],
+    coverNote: `I'm excited to apply for the ${job.title} role at ${job.company}. ${summary.split(". ")[0] ?? ""}.`,
+  };
+}

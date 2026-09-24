@@ -151,3 +151,30 @@ describe("role core phrase must appear together, in order", () => {
     expect(roleMatchesTitle(role, title)).toBe(want);
   });
 });
+
+import { roleCoveredBy, scanGaps } from "../src/lib/engine/analyze";
+describe("editing roles after a scan", () => {
+  const scope = { roles: ["Product Manager", "Product Analyst"], companies: ["greenhouse:stripe"], locations: ["Dallas"], paid: true };
+  const now = (p: Partial<{ roles: string[]; companies: string[]; locations: string[]; paidOn: boolean }>) => ({ roles: scope.roles, companies: scope.companies, locations: scope.locations, paidOn: true, ...p });
+  it("removing a role hides its jobs instantly (no rescan)", () => {
+    const f = { roles: ["Product Analyst"], locations: [], workModes: ["remote", "hybrid", "onsite"], usOnly: false, maxYears: 0, excludeTitle: [], maxAgeDays: 0 } as SearchFilters;
+    expect(jobVisible({ title: "Senior Product Manager", location: "Remote", workMode: "remote", postedAt: null, minYears: null }, f, 0)).toBe(false);
+    expect(jobVisible({ title: "Product Analyst", location: "Remote", workMode: "remote", postedAt: null, minYears: null }, f, 0)).toBe(true);
+    expect(scanGaps(scope, now({ roles: ["Product Analyst"] }))).toBeNull();
+  });
+  it("narrowing a role is already covered; a new or broader role needs a rescan", () => {
+    expect(roleCoveredBy("AI Product Manager", scope.roles)).toBe(true);
+    expect(roleCoveredBy("Product Owner", scope.roles)).toBe(false);
+    expect(scanGaps(scope, now({ roles: ["AI Product Manager", "Product Analyst"] }))).toBeNull();
+    expect(scanGaps(scope, now({ roles: ["Product Manager", "Product Owner"] }))).toEqual({ roles: ["Product Owner"], companies: 0, cities: [] });
+    expect(roleCoveredBy("Product Manager", ["AI Product Manager"])).toBe(false);
+  });
+  it("new companies need a rescan; new cities only when JSearch/Apify are on", () => {
+    expect(scanGaps(scope, now({ companies: ["greenhouse:stripe", "ashby:ramp"] }))?.companies).toBe(1);
+    expect(scanGaps(scope, now({ locations: ["Dallas", "Austin"] }))?.cities).toEqual(["Austin"]);
+    expect(scanGaps(scope, now({ locations: ["Dallas", "Austin"], paidOn: false }))).toBeNull();
+  });
+  it("old scans without a recorded scope never nag", () => {
+    expect(scanGaps(undefined, now({ roles: ["Anything"] }))).toBeNull();
+  });
+});

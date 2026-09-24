@@ -2,10 +2,10 @@
 
 import { animate, AnimatePresence, motion, useMotionValue, useTransform, type PanInfo } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useApp, type Status } from "@/lib/store";
+import { companyKey, useApp, type Status } from "@/lib/store";
 import type { Job } from "@/lib/types";
-import { useScan, timeAgo } from "@/lib/useScan";
-import { funnelFor, jobVisible } from "@/lib/engine/analyze";
+import { resolveCompanies, useScan, timeAgo } from "@/lib/useScan";
+import { funnelFor, jobVisible, scanGaps } from "@/lib/engine/analyze";
 import { explainFunnel } from "@/lib/engine/funnel";
 import { JobCard } from "./JobCard";
 import { Button, Magnetic, Segmented, Ticker, spring } from "./ui";
@@ -19,6 +19,20 @@ export default function Discover() {
   const setStatus = useApp((s) => s.setStatus);
   const lastScan = useApp((s) => s.lastScan);
   const filters = useApp((s) => s.filters);
+  const selected = useApp((s) => s.selected);
+  const custom = useApp((s) => s.custom);
+  const srcSettings = useApp((s) => s.sources);
+  // settings changes the saved pool can't answer (new roles, companies, cities for paid search) → ask for a rescan
+  const gaps = useMemo(
+    () =>
+      scanGaps(lastScan?.scope, {
+        roles: filters.roles,
+        companies: srcSettings.boards ? resolveCompanies(selected, custom).map(companyKey) : [],
+        locations: filters.locations,
+        paidOn: (srcSettings.jsearch.enabled && !!srcSettings.jsearch.apiKey) || (srcSettings.apify.enabled && !!srcSettings.apify.token),
+      }),
+    [lastScan, filters.roles, filters.locations, selected, custom, srcSettings],
+  );
   const set = useApp((s) => s.set);
   const { progress, scan, stop } = useScan();
   const [sort, setSort] = useState<Sort>("match");
@@ -145,6 +159,32 @@ export default function Discover() {
         </div>
       )}
 
+      {gaps && !progress.running && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border border-brand/40 bg-brand-soft p-4 text-sm text-ink"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold">
+              Rescan to collect jobs for what you added:{" "}
+              {[
+                gaps.roles.length ? `${gaps.roles.length === 1 ? "role" : "roles"} ${gaps.roles.map((r) => `“${r}”`).join(", ")}` : "",
+                gaps.companies ? `${gaps.companies} new ${gaps.companies === 1 ? "company" : "companies"}` : "",
+                gaps.cities.length ? `${gaps.cities.length === 1 ? "city" : "cities"} ${gaps.cities.join(", ")} (for JSearch/Apify)` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </div>
+            <div className="mt-0.5 text-ink-2">
+              Everything else, like removed or narrowed roles, work mode, cities, freshness, experience and skip words, already applies to the jobs you have.
+              {(srcSettings.jsearch.enabled || srcSettings.apify.enabled) && gaps.roles.length + gaps.cities.length > 0 ? " JSearch and Apify will run again, since the search changed." : ""}
+            </div>
+          </div>
+          <Button onClick={scan}>Rescan now</Button>
+        </motion.div>
+      )}
+
       <ScanBar progress={progress} />
       {progress.error && <div className="mt-4 rounded-2xl border border-bad/30 bg-bad/10 p-4 text-sm text-bad">{progress.error}</div>}
       {!progress.error && !!progress.warnings?.length && (
@@ -160,7 +200,7 @@ export default function Discover() {
             {boardNote && <div>ⓘ {boardNote}</div>}
             {hiddenCount > 0 && (
               <div>
-                ⓘ {hiddenCount} more job{hiddenCount === 1 ? "" : "s"} already found {hiddenCount === 1 ? "is" : "are"} hidden by your filters (work mode, cities, US-only, freshness, experience). Changing them updates this deck instantly, with no rescan.
+                ⓘ {hiddenCount} more job{hiddenCount === 1 ? "" : "s"} already found {hiddenCount === 1 ? "is" : "are"} hidden by your filters (roles, work mode, cities, US-only, freshness, experience). Changing them updates this deck instantly, with no rescan.
               </div>
             )}
           </div>
@@ -402,7 +442,7 @@ function EmptyDeck({ running, hasScan, hidden, onScan }: { running: boolean; has
           {running
             ? "Cards will drop in as each source comes back."
             : filtered
-              ? `${hidden} job${hidden === 1 ? "" : "s"} you already found ${hidden === 1 ? "doesn't" : "don't"} match your current work mode, cities, US-only, freshness or experience settings. Widen them and they appear instantly.`
+              ? `${hidden} job${hidden === 1 ? "" : "s"} you already found ${hidden === 1 ? "doesn't" : "don't"} match your current roles, work mode, cities, US-only, freshness or experience settings. Widen them and they appear instantly.`
               : hasScan
                 ? "You've reviewed everything. Rescan later, or widen your filters in Settings."
                 : "Run your first scan to fill the deck."}

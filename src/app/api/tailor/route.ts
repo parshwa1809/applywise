@@ -1,5 +1,7 @@
 import { rateLimit } from "@/lib/rateLimit";
-import { DEFAULT_MODELS, ProviderError, tailorOffline, tailorWithAi } from "@/lib/engine/tailor";
+import { DEFAULT_MODELS, ProviderError, resumeBullets, sanitize, tailorOffline, tailorWithAi } from "@/lib/engine/tailor";
+import { demoTailorRaw } from "@/lib/engine/demo";
+import { parseResume } from "@/lib/resume/doc";
 import type { AiProvider, Job } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -24,6 +26,13 @@ export async function POST(req: Request) {
   // The key is used for this one request and never stored or logged server-side.
   if (!apiKey || !provider || !PROVIDERS.has(provider)) {
     return Response.json(tailorOffline(job, resume));
+  }
+  if (process.env.APPLYWISE_DEMO === "1") {
+    // demo recordings: no real AI call, but the real truth guards run on the demo output
+    await new Promise((r) => setTimeout(r, 1400));
+    const doc = parseResume(resume);
+    const summary = doc.sections.find((s) => s.kind === "summary")?.text ?? "";
+    return Response.json(sanitize(demoTailorRaw(job, resumeBullets(resume), summary), job, resume));
   }
   try {
     return Response.json(await tailorWithAi(job, resume, provider, apiKey, model));

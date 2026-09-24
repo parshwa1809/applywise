@@ -193,7 +193,15 @@ export function useScan() {
     for (const [id, j] of Object.entries(st.jobs)) if (keep.has(id) || st.status[id] || !ok.has(j.ats)) jobs[id] = j;
     useApp.setState({
       jobs,
-      lastScan: { at: new Date().toISOString(), companies: companies.length, reachable, postings, kept: fresh.length, sources: results },
+      lastScan: {
+        at: new Date().toISOString(),
+        companies: companies.length,
+        reachable,
+        postings,
+        kept: fresh.length,
+        sources: results,
+        scope: { roles: [...s.filters.roles], companies: companies.map((c) => companyKey(c)), locations: [...s.filters.locations], paid: extras.length > 0 || results.some((r) => r.skipped) },
+      },
     });
     const failed = results.filter((r) => r.error);
     const ran = results.filter((r) => !r.skipped);
