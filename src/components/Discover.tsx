@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp, type Status } from "@/lib/store";
 import type { Job } from "@/lib/types";
 import { useScan, timeAgo } from "@/lib/useScan";
+import { funnelFor, jobVisible } from "@/lib/engine/analyze";
+import { explainFunnel } from "@/lib/engine/funnel";
 import { JobCard } from "./JobCard";
 import { Button, Magnetic, Segmented, Ticker, spring } from "./ui";
 
@@ -16,21 +18,39 @@ export default function Discover() {
   const status = useApp((s) => s.status);
   const setStatus = useApp((s) => s.setStatus);
   const lastScan = useApp((s) => s.lastScan);
+  const filters = useApp((s) => s.filters);
   const set = useApp((s) => s.set);
   const { progress, scan, stop } = useScan();
   const [sort, setSort] = useState<Sort>("match");
   const [history, setHistory] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
 
+  // the saved pool is filtered here, live: changing work mode, cities, freshness or experience
+  // re-filters instantly with no rescan (roles decide what gets collected, so those need one)
+  const [now] = useState(() => Date.now());
+  const { visible, hiddenCount, perSource, boardNote } = useMemo(() => {
+    const open = Object.values(jobs).filter((j) => !status[j.id]);
+    const vis = open.filter((j) => jobVisible(j, filters, now));
+    const count = (ats: string[]) => [open.filter((j) => ats.includes(j.ats)).length, vis.filter((j) => ats.includes(j.ats)).length];
+    const boards = open.filter((j) => j.ats === "greenhouse" || j.ats === "lever" || j.ats === "ashby");
+    const boardsShown = vis.some((j) => j.ats === "greenhouse" || j.ats === "lever" || j.ats === "ashby");
+    return {
+      visible: vis,
+      hiddenCount: open.length - vis.length,
+      perSource: { "Company boards": count(["greenhouse", "lever", "ashby"]), JSearch: count(["jsearch"]), Apify: count(["apify"]) } as Record<string, number[]>,
+      boardNote: boards.length && !boardsShown ? explainFunnel(funnelFor(boards, filters, now), { maxYears: filters.maxYears || undefined, maxAgeDays: filters.maxAgeDays || undefined }) : null,
+    };
+  }, [jobs, status, filters, now]);
+
   const queue = useMemo(() => {
-    const list = Object.values(jobs).filter((j) => !status[j.id]);
+    const list = [...visible];
     const by: Record<Sort, (a: Job, b: Job) => number> = {
       match: (a, b) => b.match - 0.8 * b.ghost.score - (a.match - 0.8 * a.ghost.score), // fit, discounted by ghost risk
       new: (a, b) => Date.parse(b.postedAt ?? "0") - Date.parse(a.postedAt ?? "0"),
       real: (a, b) => a.ghost.score - b.ghost.score || b.match - a.match,
     };
     return list.sort(by[sort]);
-  }, [jobs, status, sort]);
+  }, [visible, sort]);
 
   const decide = useCallback(
     (job: Job, dir: Dir) => {
@@ -119,7 +139,7 @@ export default function Discover() {
             >
               <span className={`h-1.5 w-1.5 rounded-full ${r.error ? "bg-bad" : r.skipped ? "bg-ink-3" : "bg-good"}`} />
               {r.label}
-              {r.label === "Company boards" && !r.error ? ` · ${lastScan.reachable}/${lastScan.companies} boards` : ""} · {r.error ? "failed" : r.skipped ? r.skipped : `${r.found} match${r.found === 1 ? "" : "es"}`}
+              {r.label === "Company boards" && !r.error ? ` · ${lastScan.reachable}/${lastScan.companies} boards` : ""} · {r.error ? "failed" : r.skipped ? `${r.skipped}` : perSource[r.label] ? `${perSource[r.label][1]} shown of ${perSource[r.label][0]}` : `${r.found} found`}
             </span>
           ))}
         </div>
@@ -134,11 +154,21 @@ export default function Discover() {
           ))}
         </div>
       )}
-      {!progress.running && !!progress.notes?.length && (
-        <div className="mt-3 rounded-2xl border border-line bg-card p-4 text-sm text-ink-2">
-          {progress.notes.map((w) => (
-            <div key={w}>ⓘ {w}</div>
-          ))}
+      {!progress.running && (boardNote || hiddenCount > 0) && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-line bg-card p-4 text-sm text-ink-2">
+          <div className="min-w-0 flex-1 space-y-1">
+            {boardNote && <div>ⓘ {boardNote}</div>}
+            {hiddenCount > 0 && (
+              <div>
+                ⓘ {hiddenCount} more job{hiddenCount === 1 ? "" : "s"} already found {hiddenCount === 1 ? "is" : "are"} hidden by your filters (work mode, cities, US-only, freshness, experience). Changing them updates this deck instantly, with no rescan.
+              </div>
+            )}
+          </div>
+          {hiddenCount > 0 && (
+            <button type="button" onClick={() => set({ view: "settings", settingsTab: "search" })} className="shrink-0 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-ink hover:bg-bg-2">
+              Adjust filters
+            </button>
+          )}
         </div>
       )}
 
@@ -166,7 +196,7 @@ export default function Discover() {
                 );
               })}
           </AnimatePresence>
-          {!top && <EmptyDeck running={progress.running} hasScan={!!lastScan} onScan={scan} />}
+          {!top && <EmptyDeck running={progress.running} hasScan={!!lastScan} hidden={hiddenCount} onScan={scan} />}
         </div>
 
         <aside className="space-y-4">
@@ -352,24 +382,36 @@ function ScanBar({ progress }: { progress: ReturnType<typeof useScan>["progress"
   );
 }
 
-function EmptyDeck({ running, hasScan, onScan }: { running: boolean; hasScan: boolean; onScan: () => void }) {
+function EmptyDeck({ running, hasScan, hidden, onScan }: { running: boolean; hasScan: boolean; hidden: number; onScan: () => void }) {
   const sources = useApp((s) => s.sources);
   const set = useApp((s) => s.set);
   const missing = [
     !(sources.jsearch.enabled && sources.jsearch.apiKey) && "JSearch",
     !(sources.apify.enabled && sources.apify.token) && "Apify",
   ].filter(Boolean) as string[];
-  const nudge = hasScan && !running && missing.length > 0;
+  const filtered = hasScan && !running && hidden > 0;
+  const nudge = hasScan && !running && !filtered && missing.length > 0;
   return (
     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="grid h-full place-items-center rounded-[28px] border-2 border-dashed border-line p-8 text-center">
       <div>
         <motion.div animate={{ y: [0, -10, 0], rotate: [0, -6, 6, 0] }} transition={{ repeat: Infinity, duration: 3 }} className="mx-auto mb-4 grid h-20 w-20 place-items-center rounded-3xl bg-brand-soft text-4xl">
-          {running ? "🔭" : hasScan ? "🎉" : "✨"}
+          {running ? "🔭" : filtered ? "🔍" : hasScan ? "🎉" : "✨"}
         </motion.div>
-        <div className="font-display text-2xl font-bold">{running ? "Finding real roles…" : hasScan ? "Inbox zero!" : "Ready when you are"}</div>
+        <div className="font-display text-2xl font-bold">{running ? "Finding real roles…" : filtered ? "Your filters hide the rest" : hasScan ? "Inbox zero!" : "Ready when you are"}</div>
         <p className="mx-auto mt-2 max-w-xs text-ink-2">
-          {running ? "Cards will drop in as each source comes back." : hasScan ? "You've reviewed everything. Rescan later, or widen your filters in Settings." : "Run your first scan to fill the deck."}
+          {running
+            ? "Cards will drop in as each source comes back."
+            : filtered
+              ? `${hidden} job${hidden === 1 ? "" : "s"} you already found ${hidden === 1 ? "doesn't" : "don't"} match your current work mode, cities, US-only, freshness or experience settings. Widen them and they appear instantly.`
+              : hasScan
+                ? "You've reviewed everything. Rescan later, or widen your filters in Settings."
+                : "Run your first scan to fill the deck."}
         </p>
+        {filtered && (
+          <button type="button" onClick={() => set({ view: "settings", settingsTab: "search" })} className="mx-auto mt-5 inline-flex h-11 items-center rounded-full bg-ink px-5 text-[15px] font-semibold text-bg">
+            Adjust filters
+          </button>
+        )}
         {nudge && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, ...spring }} className="mx-auto mt-5 max-w-sm rounded-2xl border border-brand/40 bg-brand-soft p-4 text-left">
             <div className="font-display text-base font-bold text-ink">Want more jobs?</div>

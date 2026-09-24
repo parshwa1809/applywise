@@ -49,16 +49,19 @@ interface JSearchPosting {
   job_publisher?: string;
 }
 
-/** roles × places → search strings, e.g. "product manager in Dallas" / "product manager remote". */
+/**
+ * roles × places → search strings, e.g. "product manager in Dallas" / "product manager remote".
+ * Work mode is deliberately ignored: results go into a pool that's filtered on the device, so switching
+ * remote/hybrid/onsite never needs a new (paid) search.
+ */
 export function jsearchQueries(f: SearchFilters, max: number): string[] {
   const roles = f.roles.length ? f.roles : ["jobs"];
-  const places = [
-    ...f.locations,
-    ...(f.workModes.includes("remote") ? ["remote"] : []),
-    ...(!f.locations.length && !f.workModes.includes("remote") ? [f.usOnly ? "United States" : ""] : []),
-  ].filter((p, i, a) => a.indexOf(p) === i);
+  const places = [...f.locations.map((l) => l.trim()).filter(Boolean), "remote", ...(f.locations.length ? [] : [f.usOnly ? "United States" : ""])].filter(
+    (p, i, a) => a.indexOf(p) === i,
+  );
   const out: string[] = [];
-  for (const r of roles) for (const p of places.length ? places : [""]) out.push(p === "remote" ? `${r} remote` : p ? `${r} in ${p}` : r);
+  for (const p of ["remote", ...places.filter((x) => x !== "remote")])
+    for (const r of roles) out.push(p === "remote" ? `${r} remote` : p ? `${r} in ${p}` : r);
   return out.slice(0, Math.max(1, max));
 }
 
@@ -137,10 +140,22 @@ interface ApifyPosting {
 export const APIFY_MIN = 200;
 export const clampApify = (n: number | undefined) => Math.min(1000, Math.max(APIFY_MIN, Math.round(Number(n) || APIFY_MIN)));
 
+/** Apify matches titles literally, so ask for both halves of a title family ("developer" ↔ "engineer"). */
+export function titleSearchVariants(roles: string[]): string[] {
+  const out = new Set<string>();
+  for (const r of roles) {
+    const role = r.trim();
+    if (!role) continue;
+    out.add(role);
+    if (/\bdeveloper\b/i.test(role)) out.add(role.replace(/\bdeveloper\b/i, "Engineer"));
+    else if (/\bengineer\b/i.test(role)) out.add(role.replace(/\bengineer\b/i, "Developer"));
+  }
+  return [...out].slice(0, 12);
+}
+
 export function apifyInput(f: SearchFilters, limit: number): Record<string, unknown> {
-  const levels = f.maxYears === 0 ? undefined : f.maxYears <= 2 ? ["0-2"] : f.maxYears <= 5 ? ["0-2", "2-5"] : ["0-2", "2-5", "5-10"];
   const input: Record<string, unknown> = {
-    titleSearch: f.roles,
+    titleSearch: titleSearchVariants(f.roles),
     locationSearch: f.usOnly ? ["United States"] : undefined,
     aiEmploymentTypeFilter: ["FULL_TIME"],
     removeAgency: true,
@@ -148,8 +163,7 @@ export function apifyInput(f: SearchFilters, limit: number): Record<string, unkn
     includeCompanyDetails: false,
     limit: clampApify(limit),
   };
-  if (levels) input.aiExperienceLevelFilter = levels;
-  if (f.workModes.length === 1 && f.workModes[0] === "remote") input.remote = true;
+  // no remote/experience filters here on purpose: the pool is filtered on the device instead
   return Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
 }
 

@@ -5,8 +5,9 @@ import type { SearchFilters } from "../src/lib/types";
 const f: SearchFilters = { roles: ["Product Manager", "Product Analyst"], locations: ["Dallas"], workModes: ["remote", "hybrid"], usOnly: true, maxYears: 4, excludeTitle: [], maxAgeDays: 30 };
 
 describe("JSearch", () => {
-  it("builds role × place queries capped by quota", () => {
-    expect(jsearchQueries(f, 10)).toEqual(["Product Manager in Dallas", "Product Manager remote", "Product Analyst in Dallas", "Product Analyst remote"]);
+  it("builds role × place queries capped by quota, remote first, regardless of work mode", () => {
+    expect(jsearchQueries(f, 10)).toEqual(["Product Manager remote", "Product Analyst remote", "Product Manager in Dallas", "Product Analyst in Dallas"]);
+    expect(jsearchQueries({ ...f, workModes: ["onsite"] }, 10)).toEqual(jsearchQueries(f, 10));
     expect(jsearchQueries(f, 2)).toHaveLength(2);
   });
   it("normalizes v2 postings", () => {
@@ -35,7 +36,10 @@ describe("JSearch", () => {
 describe("Apify", () => {
   it("builds actor input from filters", () => {
     expect(apifyInput(f, 50).limit).toBe(200);
-    expect(apifyInput(f, 300)).toMatchObject({ titleSearch: ["Product Manager", "Product Analyst"], locationSearch: ["United States"], aiExperienceLevelFilter: ["0-2", "2-5"], limit: 300, removeAgency: true });
+    expect(apifyInput(f, 300)).toMatchObject({ titleSearch: ["Product Manager", "Product Analyst"], locationSearch: ["United States"], limit: 300, removeAgency: true });
+    // work mode and experience are filtered on the device, so they never change the (paid) Apify run
+    expect(apifyInput(f, 300)).not.toHaveProperty("remote");
+    expect(apifyInput(f, 300)).not.toHaveProperty("aiExperienceLevelFilter");
   });
   it("normalizes Fantastic.jobs rows", () => {
     const [j] = normalizeApify([{ id: 9, title: "Product Manager", organization: "Beta", url: "u", cities_derived: ["Austin"], regions_derived: ["Texas"], ai_work_arrangement: "Hybrid", description_text: "d", date_posted: "2026-09-20" }]);

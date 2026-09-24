@@ -17,7 +17,7 @@ export default function Settings() {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6 sm:px-6">
       <h1 className="font-display text-4xl font-bold sm:text-5xl">Settings</h1>
-      <p className="mt-1 text-ink-2">Changes apply on your next scan.</p>
+      <p className="mt-1 text-ink-2">Work mode, cities, freshness, experience and excluded words apply instantly to jobs already found. Changing roles or companies needs a Rescan.</p>
       <div className="no-scrollbar mt-6 overflow-x-auto">
         <Segmented<Tab>
           id="settings"

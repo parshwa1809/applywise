@@ -29,7 +29,7 @@ export function RolesSection() {
   return (
     <div className="space-y-8">
       <div>
-        <Label title="Which roles?" hint="Titles are matched word-by-word, so “product manager” also catches “Senior Product Manager, Growth”." />
+        <Label title="Which roles?" hint="Titles are matched by job family, so “product manager” also catches “Sr. PM, Growth”, and “software developer” catches “Software Engineer”, “Backend Developer” and “SDE II”." />
         <TagInput values={f.roles} onChange={(roles) => setFilters({ roles })} placeholder="Type a role and press Enter" suggestions={ROLE_SUGGESTIONS} />
       </div>
       <div>

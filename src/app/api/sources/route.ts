@@ -69,7 +69,7 @@ export async function POST(req: Request) {
     } else {
       return Response.json({ error: "Unknown source" }, { status: 400 });
     }
-    const { jobs, stats } = analyze(raw, filters, resume);
+    const { jobs, stats } = analyze(raw, filters, resume, Date.now(), { pool: true });
     return Response.json({ jobs, stats, requests });
   } catch (e) {
     const status = e instanceof SourceError ? e.status : 502;

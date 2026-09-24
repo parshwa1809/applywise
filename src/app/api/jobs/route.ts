@@ -56,7 +56,8 @@ export async function POST(req: Request) {
   });
 
   const raw = perCompany.flatMap((p) => p.jobs);
-  const { jobs, stats } = analyze(raw, body.filters, body.resume ?? "");
+  // collect the broad pool (role matches); work mode, cities, freshness and experience filter on the device
+  const { jobs, stats } = analyze(raw, body.filters, body.resume ?? "", Date.now(), { pool: true });
   return Response.json({
     jobs,
     stats,

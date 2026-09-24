@@ -5,6 +5,9 @@ import { findSkills } from "./skills";
 const DAY = 86_400_000;
 
 // ── work mode ──────────────────────────────────────────────────────────────────────────────
+const REMOTE_TEXT =
+  /\b(fully|100%|completely|entirely) remote\b|\bremote[- ]first\b|\bwork from anywhere\b|\b(this|the) (role|position|job|opportunity) is (a )?(fully )?remote\b|\bremote \((us|usa|united states)\)|\bremote[- ]eligible\b|\bopen to remote\b/;
+
 export function detectWorkMode(j: Pick<RawJob, "location" | "remoteHint" | "workplaceHint" | "description">): Job["workMode"] {
   const wp = (j.workplaceHint ?? "").toLowerCase();
   if (wp.includes("hybrid")) return "hybrid";
@@ -15,6 +18,8 @@ export function detectWorkMode(j: Pick<RawJob, "location" | "remoteHint" | "work
   if (j.remoteHint || loc.includes("remote")) return "remote";
   const head = j.description.slice(0, 1500).toLowerCase();
   if (/\bhybrid\b/.test(head)) return "hybrid";
+  // many boards list an HQ city but say "fully remote" only in the text
+  if (REMOTE_TEXT.test(head)) return "remote";
   if (j.location.trim()) return "onsite";
   return "unknown";
 }
@@ -88,20 +93,55 @@ export interface FilterStats {
   overYears?: { company: string; title: string; years: number; url: string }[];
 }
 
+// ── role matching: title families, not exact strings ───────────────────────────────────────
+// "software developer" should also find "Software Engineer", "Backend Developer", "SDE II".
+const ABBREVIATIONS: [RegExp, string][] = [
+  [/\bsde\b/g, "software development engineer"],
+  [/\bswe\b/g, "software engineer"],
+  [/\bapm\b/g, "associate product manager"],
+  [/\bpm\b/g, "product manager"],
+  [/\bsr\.?(?=\s)/g, "senior"],
+  [/\bjr\.?(?=\s)/g, "junior"],
+];
+const SAME_JOB: string[][] = [
+  ["developer", "engineer", "programmer", "dev"],
+  ["manager", "mgr"],
+  ["analyst", "analytics"],
+];
+// a role word that a specialization can stand in for ("software" is implied by "Backend Developer")
+const IMPLIED_BY: Record<string, string[]> = {
+  software: ["software", "backend", "back end", "frontend", "front end", "full stack", "fullstack", "web", "mobile", "ios", "android", "platform", "application", "applications", "cloud", "development"],
+};
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+export function normalizeTitle(text: string): string {
+  let t = ` ${text.toLowerCase().replace(/[-_/,()|]+/g, " ").replace(/\s+/g, " ")} `;
+  for (const [re, full] of ABBREVIATIONS) t = t.replace(re, full);
+  return t;
+}
+function wordAlternatives(w: string): string[] {
+  return IMPLIED_BY[w] ?? SAME_JOB.find((g) => g.includes(w)) ?? [w];
+}
+/** Every word of the role must appear in the title as a whole word (plurals ok), allowing title-family synonyms. */
+export function roleMatchesTitle(role: string, title: string): boolean {
+  const t = normalizeTitle(title);
+  const words = normalizeTitle(role).trim().split(" ").filter(Boolean);
+  return words.length > 0 && words.every((w) => wordAlternatives(w).some((alt) => new RegExp(`\\b${escapeRe(alt)}s?\\b`).test(t)));
+}
+
 export function titleMatches(title: string, f: SearchFilters): boolean {
-  const t = title.toLowerCase();
-  if (f.excludeTitle.some((x) => x.trim() && t.includes(x.toLowerCase().trim()))) return false;
+  const t = normalizeTitle(title);
+  if (f.excludeTitle.some((x) => x.trim() && new RegExp(`\\b${escapeRe(normalizeTitle(x).trim())}(s|ship)?\\b`).test(t))) return false;
   if (!f.roles.length) return true;
-  return f.roles.some((r) => {
-    const words = r.toLowerCase().split(/\s+/).filter(Boolean);
-    return words.length > 0 && words.every((w) => t.includes(w));
-  });
+  return f.roles.some((r) => roleMatchesTitle(r, title));
 }
 
 export function locationMatches(location: string, mode: Job["workMode"], f: SearchFilters): boolean {
   if (f.usOnly && !isLikelyUS(location)) return false;
   const modes = f.workModes.length ? f.workModes : (["remote", "hybrid", "onsite"] as WorkMode[]);
   if (mode === "remote") return modes.includes("remote");
+  // a job that never says how it works is only kept when every work mode is acceptable
+  if (mode === "unknown" && modes.length < 3) return false;
   if (mode !== "unknown" && !modes.includes(mode)) return false;
   if (!f.locations.length) return true;
   const l = location.toLowerCase();
@@ -109,7 +149,39 @@ export function locationMatches(location: string, mode: Job["workMode"], f: Sear
 }
 
 // ── main ───────────────────────────────────────────────────────────────────────────────────
-export function analyze(raw: RawJob[], f: SearchFilters, resume: string, now = Date.now()): { jobs: Job[]; stats: FilterStats } {
+/** How old a posting can be and still enter the pool (the freshness slider tops out at 90 days). */
+export const POOL_MAX_AGE_DAYS = 120;
+
+/**
+ * The fine filters — work mode, cities, US-only, freshness, experience, excluded words — that run on
+ * the user's device over the saved pool, so changing them never needs a rescan.
+ */
+export function jobVisible(j: Pick<Job, "title" | "location" | "workMode" | "postedAt" | "minYears">, f: SearchFilters, now = Date.now()): boolean {
+  if (f.excludeTitle.some((x) => x.trim() && new RegExp(`\\b${escapeRe(normalizeTitle(x).trim())}(s|ship)?\\b`).test(normalizeTitle(j.title)))) return false;
+  if (!locationMatches(j.location === "—" ? "" : j.location, j.workMode, f)) return false;
+  if (f.maxAgeDays > 0 && j.postedAt && (now - Date.parse(j.postedAt)) / DAY > f.maxAgeDays) return false;
+  if (f.maxYears > 0 && j.minYears !== null && j.minYears > f.maxYears) return false;
+  return true;
+}
+
+/** Stage-by-stage counts over the pool, for "which filter emptied my deck" explanations. */
+export function funnelFor(jobs: Pick<Job, "title" | "company" | "location" | "workMode" | "postedAt" | "minYears">[], f: SearchFilters, now = Date.now()) {
+  const loose = { ...f, excludeTitle: [] as string[] };
+  const titled = jobs.filter((j) => !f.excludeTitle.some((x) => x.trim() && new RegExp(`\\b${escapeRe(normalizeTitle(x).trim())}(s|ship)?\\b`).test(normalizeTitle(j.title))));
+  const located = titled.filter((j) => locationMatches(j.location === "—" ? "" : j.location, j.workMode, loose));
+  const fresh = located.filter((j) => !(f.maxAgeDays > 0 && j.postedAt && (now - Date.parse(j.postedAt)) / DAY > f.maxAgeDays));
+  const fits = fresh.filter((j) => !(f.maxYears > 0 && j.minYears !== null && j.minYears > f.maxYears));
+  const overYears = fresh.filter((j) => !fits.includes(j)).map((j) => ({ company: j.company, title: j.title, years: j.minYears ?? 0 }));
+  return { total: jobs.length, title: titled.length, location: located.length, age: fresh.length, experience: fits.length, overYears };
+}
+
+export function analyze(
+  raw: RawJob[],
+  f: SearchFilters,
+  resume: string,
+  now = Date.now(),
+  opts: { pool?: boolean } = {},
+): { jobs: Job[]; stats: FilterStats } {
   const stats: FilterStats = { total: raw.length, title: 0, location: 0, age: 0, experience: 0, kept: 0 };
   const resumeSkills = new Set(findSkills(resume));
   const dupes = new Map<string, number>();
@@ -121,15 +193,17 @@ export function analyze(raw: RawJob[], f: SearchFilters, resume: string, now = D
   const jobs: Job[] = [];
   const seen = new Set<string>();
   for (const r of raw) {
-    if (!titleMatches(r.title, f)) continue;
+    const pool = !!opts.pool;
+    if (!(pool ? !f.roles.length || f.roles.some((role) => roleMatchesTitle(role, r.title)) : titleMatches(r.title, f))) continue;
     stats.title++;
     const mode = detectWorkMode(r);
-    if (!locationMatches(r.location, mode, f)) continue;
+    if (pool && r.postedAt && (now - Date.parse(r.postedAt)) / DAY > POOL_MAX_AGE_DAYS) continue;
+    if (!pool && !locationMatches(r.location, mode, f)) continue;
     stats.location++;
-    if (f.maxAgeDays > 0 && r.postedAt && (now - Date.parse(r.postedAt)) / DAY > f.maxAgeDays) continue;
+    if (!pool && f.maxAgeDays > 0 && r.postedAt && (now - Date.parse(r.postedAt)) / DAY > f.maxAgeDays) continue;
     stats.age++;
     const yrs = minYears(r.description);
-    if (f.maxYears > 0 && yrs !== null && yrs > f.maxYears) {
+    if (!pool && f.maxYears > 0 && yrs !== null && yrs > f.maxYears) {
       (stats.overYears ??= []).push({ company: r.company, title: r.title, years: yrs, url: r.url });
       continue;
     }
@@ -160,7 +234,7 @@ export function analyze(raw: RawJob[], f: SearchFilters, resume: string, now = D
       workMode: mode,
       postedAt: r.postedAt,
       url: r.url,
-      description: r.description.slice(0, 12000),
+      description: r.description.slice(0, opts.pool ? 8000 : 12000),
       salary: r.salary,
       minYears: yrs,
       match,

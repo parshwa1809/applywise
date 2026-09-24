@@ -52,16 +52,19 @@ function timesFontCss(): string {
 const withFonts = (html: string) => (serverless() ? html.replace("</head>", `<style>${timesFontCss()}</style></head>`) : html);
 
 /** Local: Playwright's Chromium (same one job-tailor uses). Vercel/Lambda: @sparticuz/chromium. */
+async function launchBrowser(): Promise<Browser> {
+  const { chromium } = await import("playwright");
+  if (serverless()) {
+    const sparticuz = (await import("@sparticuz/chromium")).default;
+    return chromium.launch({ args: sparticuz.args, executablePath: await sparticuz.executablePath(), headless: true });
+  }
+  return chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {});
+}
+
+/** Locally one browser is reused across requests (fast). */
 async function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
-    browserPromise = (async () => {
-      const { chromium } = await import("playwright");
-      if (serverless()) {
-        const sparticuz = (await import("@sparticuz/chromium")).default;
-        return chromium.launch({ args: sparticuz.args, executablePath: await sparticuz.executablePath(), headless: true });
-      }
-      return chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {});
-    })().catch((e) => {
+    browserPromise = launchBrowser().catch((e) => {
       browserPromise = null;
       throw e;
     });
@@ -101,9 +104,34 @@ export interface PdfResult {
   underfilled: boolean;
 }
 
+const isClosedError = (e: unknown) => /has been closed|Target closed|browser has disconnected|Browser closed/i.test(String(e));
+
 export async function generateResumePdf(doc: ResumeDoc, title: string): Promise<PdfResult> {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
+  // Serverless instances are frozen between requests, which kills a cached Chromium while it still
+  // looks connected. There, launch a fresh browser per request (the unpacked binary stays in /tmp,
+  // so this costs well under a second) and always close it.
+  if (serverless()) {
+    for (let attempt = 1; ; attempt++) {
+      const browser = await launchBrowser();
+      try {
+        return await renderOnePage(await browser.newPage(), doc, title);
+      } catch (e) {
+        if (attempt >= 2 || !isClosedError(e)) throw e;
+      } finally {
+        await browser.close().catch(() => {});
+      }
+    }
+  }
+  try {
+    return await renderOnePage(await (await getBrowser()).newPage(), doc, title);
+  } catch (e) {
+    if (!isClosedError(e)) throw e;
+    browserPromise = null; // the cached browser died; start a new one once
+    return renderOnePage(await (await getBrowser()).newPage(), doc, title);
+  }
+}
+
+async function renderOnePage(page: Page, doc: ResumeDoc, title: string): Promise<PdfResult> {
   try {
     let bestUnderfilled: { m: Measurement; c: Candidate } | null = null;
     for (const c of buildCandidates(doc)) {
@@ -133,6 +161,6 @@ export async function generateResumePdf(doc: ResumeDoc, title: string): Promise<
     }
     throw new PdfLayoutError("Even the tightest layout runs past one page — shorten your resume a little and try again.");
   } finally {
-    await page.close();
+    await page.close().catch(() => {});
   }
 }

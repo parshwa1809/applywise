@@ -4,7 +4,6 @@ import { useCallback, useRef, useState } from "react";
 import companiesData from "@/data/companies.json";
 import { companyKey, PAID_COOLDOWN_MS, useApp, type SourceResult } from "./store";
 import { jsearchQueries } from "./engine/aggregators";
-import { explainFunnel } from "./engine/funnel";
 import type { FilterStats } from "./engine/analyze";
 import type { Company, Job } from "./types";
 
@@ -61,6 +60,7 @@ export function useScan() {
       const prev = s.lastScan?.sources?.find((r) => r.label === LABEL[e] && !r.error && !r.skipped);
       const last = s.paidRuns[e] ?? (prev && s.lastScan ? { at: s.lastScan.at, search: paidSearchKey(e) } : undefined);
       if (!last || last.search !== paidSearchKey(e)) return null;
+      if (!s.paidRuns[e]) useApp.setState((st) => ({ paidRuns: { ...st.paidRuns, [e]: last } }));
       const left = PAID_COOLDOWN_MS - (Date.now() - Date.parse(last.at));
       return left > 0 ? `saved · refreshes in ${Math.max(1, Math.round(left / 3600_000))}h` : null;
     };
@@ -83,7 +83,6 @@ export function useScan() {
     let reachable = 0;
     let postings = 0;
     let boardsFound = 0;
-    const funnel = { total: 0, title: 0, location: 0, age: 0, experience: 0, overYears: [] as NonNullable<FilterStats["overYears"]> };
     const fresh: Job[] = [];
     const total = companies.length + extras.length;
     setProgress({ running: true, done: 0, total, found: 0, current: [...extras.map((e) => LABEL[e]), ...(batches[0]?.slice(0, 3).map((c) => c.name) ?? [])] });
@@ -172,8 +171,6 @@ export function useScan() {
           take(data.jobs);
           boardsFound += data.jobs.length;
           postings += data.stats.total;
-          for (const k of ["total", "title", "location", "age", "experience"] as const) funnel[k] += data.stats[k];
-          funnel.overYears.push(...(data.stats.overYears ?? []));
           reachable += data.companies.filter((c) => c.count > 0).length;
         } catch {
           /* one failed batch shouldn't stop the scan */
@@ -201,10 +198,6 @@ export function useScan() {
     const failed = results.filter((r) => r.error);
     const ran = results.filter((r) => !r.skipped);
     const notes: string[] = [];
-    if (companies.length && reachable > 0 && boardsFound === 0) {
-      const f = useApp.getState().filters;
-      notes.push(explainFunnel(funnel, { maxYears: f.maxYears || undefined, maxAgeDays: f.maxAgeDays || undefined }));
-    }
     setProgress((p) => ({
       ...p,
       running: false,
@@ -282,6 +275,7 @@ async function postJson<T>(url: string, payload: unknown, tries = 2): Promise<T>
 /** The inputs that change what a paid source returns. Same key within the cooldown → reuse the last results. */
 function paidSearchKey(e: "jsearch" | "apify") {
   const { filters: f, sources } = useApp.getState();
-  const base = [f.roles, f.locations, f.workModes, f.usOnly];
-  return JSON.stringify(e === "jsearch" ? [...base, sources.jsearch.datePosted, sources.jsearch.maxQueries] : [...base, f.maxYears, sources.apify.limit, sources.apify.actorId]);
+  // only what changes the *collected* pool; work mode, freshness and experience filter locally
+  const base = [f.roles, f.locations, f.usOnly];
+  return JSON.stringify(e === "jsearch" ? [...base, sources.jsearch.datePosted, sources.jsearch.maxQueries] : [...base, sources.apify.limit, sources.apify.actorId]);
 }

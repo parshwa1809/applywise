@@ -107,12 +107,41 @@ const initial = {
   settingsTab: "search" as "search" | "companies" | "resume" | "data",
 };
 
+/**
+ * If the saved pool ever outgrows the browser's storage quota (~5 MB), drop the oldest jobs the user
+ * never acted on and save again, instead of silently failing to save anything.
+ */
+function quotaSafe(ls: Storage) {
+  return {
+    getItem: (k: string) => ls.getItem(k),
+    removeItem: (k: string) => ls.removeItem(k),
+    setItem: (k: string, v: string) => {
+      try {
+        ls.setItem(k, v);
+      } catch {
+        try {
+          const data = JSON.parse(v);
+          const st = data.state ?? {};
+          const acted = new Set(Object.keys(st.status ?? {}));
+          const open = Object.values((st.jobs ?? {}) as Record<string, Job>)
+            .filter((j) => !acted.has(j.id))
+            .sort((a, b) => Date.parse(a.postedAt ?? "0") - Date.parse(b.postedAt ?? "0"));
+          for (const j of open.slice(0, Math.ceil(open.length / 3))) delete st.jobs[j.id];
+          ls.setItem(k, JSON.stringify(data));
+        } catch {
+          /* still too big: keep working in memory for this session */
+        }
+      }
+    },
+  };
+}
+
 const safeStorage = createJSONStorage(() => {
   try {
     const k = "__aw_probe";
     localStorage.setItem(k, "1");
     localStorage.removeItem(k);
-    return localStorage;
+    return quotaSafe(localStorage);
   } catch {
     const mem = new Map<string, string>();
     return {

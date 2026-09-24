@@ -9,9 +9,9 @@ export interface Funnel {
 
 /** One short line on why company boards added nothing, e.g. "the 4 fresh matches need 5+ years (your limit is 4)". */
 export function explainFunnel(f: Funnel, ctx: { maxYears?: number; maxAgeDays?: number } = {}) {
-  const lead = "Company boards found no new matches";
+  const lead = "No company-board jobs match your filters";
   if (f.total === 0) return `${lead}.`;
-  if (f.title === 0) return `${lead} — no titles fit your roles. Try broader roles in Settings → Search.`;
+  if (f.title === 0) return `${lead} — every one contains an excluded title word. Remove some in Settings → Search.`;
   if (f.location === 0) return `${lead} — none in your locations. Add cities or work modes in Settings → Search.`;
   if (f.age === 0) return `${lead} — none posted${ctx.maxAgeDays ? ` in the last ${ctx.maxAgeDays} days` : " recently"}. Widen “Posted within” in Settings → Search.`;
   if (f.experience === 0) {
