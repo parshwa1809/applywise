@@ -203,7 +203,14 @@ export const useApp = create<State>()(
           ...current,
           ...p,
           ai,
-          filters: { ...current.filters, ...p.filters },
+          filters: {
+            ...current.filters,
+            ...p.filters,
+            // older versions offered a "manager, " chip; strip stray punctuation from saved tags
+            excludeTitle: (p.filters?.excludeTitle ?? current.filters.excludeTitle)
+              .map((x) => x.replace(/^[\s,;.|/]+|[\s,;.|/]+$/g, "").trim())
+              .filter(Boolean),
+          },
           sources: {
             ...DEFAULT_SOURCES,
             ...p.sources,

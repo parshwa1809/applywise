@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { APIFY_MIN, clampApify } from "@/lib/engine/aggregators";
 import { companyKey, useApp } from "@/lib/store";
+import { effectiveExcludes } from "@/lib/engine/analyze";
 import { DEFAULT_MODELS } from "@/lib/engine/tailor";
 import type { AiProvider, Ats, Company, SourceSettings, WorkMode } from "@/lib/types";
 import { jsearchQueries } from "@/lib/engine/aggregators";
@@ -34,7 +35,12 @@ export function RolesSection() {
       </div>
       <div>
         <Label title="Skip titles containing" hint="Seniority or roles you don't want." />
-        <TagInput values={f.excludeTitle} onChange={(excludeTitle) => setFilters({ excludeTitle })} placeholder="e.g. senior, director" suggestions={["senior", "staff", "principal", "lead", "director", "vp", "intern", "manager, "]} />
+        <TagInput values={f.excludeTitle} onChange={(excludeTitle) => setFilters({ excludeTitle })} placeholder="e.g. senior, director" suggestions={["senior", "staff", "principal", "lead", "director", "vp", "head of", "intern", "contract"]} />
+        {effectiveExcludes(f).ignored.length > 0 && (
+          <p className="mt-2 text-xs font-semibold text-warn">
+            Ignoring “{effectiveExcludes(f).ignored.join("”, “")}”: it’s part of a role you’re searching for, so skipping it would hide those jobs.
+          </p>
+        )}
       </div>
       <div>
         <Label title="Experience ceiling" hint="Hide roles asking for more years than this." />

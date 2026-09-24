@@ -167,7 +167,8 @@ export function TagInput({
 }) {
   const [draft, setDraft] = useState("");
   const add = (v: string) => {
-    const t = v.trim();
+    // stray punctuation ("manager,") would silently change what a tag matches
+    const t = v.replace(/^[\s,;.|/]+|[\s,;.|/]+$/g, "").trim();
     if (t && !values.some((x) => x.toLowerCase() === t.toLowerCase())) onChange([...values, t]);
     setDraft("");
   };

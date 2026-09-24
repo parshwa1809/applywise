@@ -121,3 +121,33 @@ describe("collect once, filter on the device", () => {
     expect(pool.filter((j) => jobVisible(j, { ...all, workModes: ["onsite"], locations: ["Seattle"] }, now)).map((j) => j.workMode)).toEqual(["onsite"]);
   });
 });
+
+import { effectiveExcludes } from "../src/lib/engine/analyze";
+describe("excluded words vs your own roles", () => {
+  const f = { roles: ["Product Manager", "Product Analyst"], excludeTitle: ["senior", "manager,", "lead"], locations: [], workModes: ["remote", "hybrid", "onsite"], usOnly: false, maxYears: 0, maxAgeDays: 0 } as SearchFilters;
+  it("ignores an excluded word that's part of a role (the old 'manager, ' chip)", () => {
+    expect(effectiveExcludes(f)).toEqual({ active: ["senior", "lead"], ignored: ["manager,"] });
+    expect(titleMatches("Product Manager, Growth", f)).toBe(true);
+    expect(titleMatches("Senior Product Manager, Growth", f)).toBe(false);
+  });
+  it("still excludes words that aren't part of any role", () => {
+    expect(titleMatches("Product Manager, Lead", f)).toBe(false);
+  });
+});
+
+describe("role core phrase must appear together, in order", () => {
+  it.each([
+    ["product manager", "Product Manager II, Growth - Notifications", true],
+    ["product manager", "Group Product Manager, Compliance", true],
+    ["product manager", "Product Marketing Manager, Payments", false],
+    ["product manager", "Engineering Manager, Billing Products", false],
+    ["product manager", "Sales Manager, Product- Fraud & Risk", false],
+    ["product manager", "Senior Manager Product Operations, FCM Ops", false],
+    ["ai product manager", "Product Manager, AI Platform", true],
+    ["software developer", "Software Development Engineer", true],
+    ["ux designer", "UX/UI Designer", true],
+    ["frontend engineer", "Front End Engineer", true],
+  ])("%s ↔ %s → %s", (role, title, want) => {
+    expect(roleMatchesTitle(role, title)).toBe(want);
+  });
+});

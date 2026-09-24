@@ -110,28 +110,67 @@ const SAME_JOB: string[][] = [
 ];
 // a role word that a specialization can stand in for ("software" is implied by "Backend Developer")
 const IMPLIED_BY: Record<string, string[]> = {
-  software: ["software", "backend", "back end", "frontend", "front end", "full stack", "fullstack", "web", "mobile", "ios", "android", "platform", "application", "applications", "cloud", "development"],
+  software: ["software", "backend", "frontend", "fullstack", "web", "mobile", "ios", "android", "platform", "application", "applications", "cloud", "development"],
 };
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export function normalizeTitle(text: string): string {
   let t = ` ${text.toLowerCase().replace(/[-_/,()|]+/g, " ").replace(/\s+/g, " ")} `;
   for (const [re, full] of ABBREVIATIONS) t = t.replace(re, full);
+  // one spelling for compound words, so "Front End" = "Front-End" = "Frontend"
+  t = t.replace(/\bfront end\b/g, "frontend").replace(/\bback end\b/g, "backend").replace(/\bfull stack\b/g, "fullstack").replace(/\bux ui\b|\bui ux\b/g, "ux ui");
   return t;
 }
 function wordAlternatives(w: string): string[] {
   return IMPLIED_BY[w] ?? SAME_JOB.find((g) => g.includes(w)) ?? [w];
 }
-/** Every word of the role must appear in the title as a whole word (plurals ok), allowing title-family synonyms. */
+const altRe = (w: string) => `(?:${wordAlternatives(w).map(escapeRe).join("|")})s?`;
+// words allowed between the two halves of a role's core phrase ("Software Development Engineer", "Product Manager II")
+const FILLER = "(?:development|ui)";
+
+/**
+ * A title matches a role when:
+ *  - the role's core phrase (its last two words, e.g. "product manager") appears together and in order —
+ *    so "Product Marketing Manager" or "Engineering Manager, Billing Products" don't count — and
+ *  - any other role words ("ai", "technical", "growth") appear anywhere in the title.
+ * Title-family synonyms apply throughout (developer = engineer, backend implies software, SDE, PM, …).
+ */
 export function roleMatchesTitle(role: string, title: string): boolean {
   const t = normalizeTitle(title);
   const words = normalizeTitle(role).trim().split(" ").filter(Boolean);
-  return words.length > 0 && words.every((w) => wordAlternatives(w).some((alt) => new RegExp(`\\b${escapeRe(alt)}s?\\b`).test(t)));
+  if (!words.length) return false;
+  const head = words.slice(-2);
+  const rest = words.slice(0, -2);
+  const headRe =
+    head.length === 1
+      ? new RegExp(`\\b${altRe(head[0])}\\b`)
+      : new RegExp(`\\b${altRe(head[0])}(?:\\s+${FILLER})?\\s+${altRe(head[1])}\\b`);
+  return headRe.test(t) && rest.every((w) => new RegExp(`\\b${altRe(w)}\\b`).test(t));
 }
 
-export function titleMatches(title: string, f: SearchFilters): boolean {
+/**
+ * Excluded words that are part of one of your own roles are ignored ("manager" can't exclude
+ * "Product Manager" when that's what you're looking for). Returns the words that actually apply.
+ */
+export function effectiveExcludes(f: Pick<SearchFilters, "roles" | "excludeTitle">): { active: string[]; ignored: string[] } {
+  const roleWords = new Set(f.roles.flatMap((r) => normalizeTitle(r).trim().split(" ")).filter(Boolean));
+  const active: string[] = [];
+  const ignored: string[] = [];
+  for (const x of f.excludeTitle) {
+    const norm = normalizeTitle(x).trim();
+    if (!norm) continue;
+    if (norm.split(" ").every((w) => roleWords.has(w))) ignored.push(x);
+    else active.push(norm);
+  }
+  return { active, ignored };
+}
+const excludedBy = (title: string, f: Pick<SearchFilters, "roles" | "excludeTitle">) => {
   const t = normalizeTitle(title);
-  if (f.excludeTitle.some((x) => x.trim() && new RegExp(`\\b${escapeRe(normalizeTitle(x).trim())}(s|ship)?\\b`).test(t))) return false;
+  return effectiveExcludes(f).active.some((x) => new RegExp(`\\b${escapeRe(x)}(s|ship)?\\b`).test(t));
+};
+
+export function titleMatches(title: string, f: SearchFilters): boolean {
+  if (excludedBy(title, f)) return false;
   if (!f.roles.length) return true;
   return f.roles.some((r) => roleMatchesTitle(r, title));
 }
@@ -157,7 +196,7 @@ export const POOL_MAX_AGE_DAYS = 120;
  * the user's device over the saved pool, so changing them never needs a rescan.
  */
 export function jobVisible(j: Pick<Job, "title" | "location" | "workMode" | "postedAt" | "minYears">, f: SearchFilters, now = Date.now()): boolean {
-  if (f.excludeTitle.some((x) => x.trim() && new RegExp(`\\b${escapeRe(normalizeTitle(x).trim())}(s|ship)?\\b`).test(normalizeTitle(j.title)))) return false;
+  if (excludedBy(j.title, f)) return false;
   if (!locationMatches(j.location === "—" ? "" : j.location, j.workMode, f)) return false;
   if (f.maxAgeDays > 0 && j.postedAt && (now - Date.parse(j.postedAt)) / DAY > f.maxAgeDays) return false;
   if (f.maxYears > 0 && j.minYears !== null && j.minYears > f.maxYears) return false;
@@ -167,7 +206,7 @@ export function jobVisible(j: Pick<Job, "title" | "location" | "workMode" | "pos
 /** Stage-by-stage counts over the pool, for "which filter emptied my deck" explanations. */
 export function funnelFor(jobs: Pick<Job, "title" | "company" | "location" | "workMode" | "postedAt" | "minYears">[], f: SearchFilters, now = Date.now()) {
   const loose = { ...f, excludeTitle: [] as string[] };
-  const titled = jobs.filter((j) => !f.excludeTitle.some((x) => x.trim() && new RegExp(`\\b${escapeRe(normalizeTitle(x).trim())}(s|ship)?\\b`).test(normalizeTitle(j.title))));
+  const titled = jobs.filter((j) => !excludedBy(j.title, f));
   const located = titled.filter((j) => locationMatches(j.location === "—" ? "" : j.location, j.workMode, loose));
   const fresh = located.filter((j) => !(f.maxAgeDays > 0 && j.postedAt && (now - Date.parse(j.postedAt)) / DAY > f.maxAgeDays));
   const fits = fresh.filter((j) => !(f.maxYears > 0 && j.minYears !== null && j.minYears > f.maxYears));
