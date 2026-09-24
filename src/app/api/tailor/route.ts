@@ -1,5 +1,5 @@
 import { rateLimit } from "@/lib/rateLimit";
-import { tailorOffline, tailorWithAi } from "@/lib/engine/tailor";
+import { DEFAULT_MODELS, ProviderError, tailorOffline, tailorWithAi } from "@/lib/engine/tailor";
 import type { AiProvider, Job } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -29,6 +29,8 @@ export async function POST(req: Request) {
     return Response.json(await tailorWithAi(job, resume, provider, apiKey, model));
   } catch (e) {
     const message = e instanceof Error ? e.message : "AI request failed";
-    return Response.json({ ...tailorOffline(job, resume), error: message });
+    const status = e instanceof ProviderError ? e.status : undefined;
+    console.error(`[tailor] ${provider}/${model || DEFAULT_MODELS[provider as AiProvider]} failed${status ? ` (HTTP ${status})` : ""}: ${message.slice(0, 300)}`);
+    return Response.json({ ...tailorOffline(job, resume), error: message, errorStatus: status, errorModel: model || DEFAULT_MODELS[provider as AiProvider] });
   }
 }

@@ -189,14 +189,9 @@ function TailorView({ job, auto }: { job: Job; auto: boolean }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ job, resume, provider: ai.keys[ai.provider] ? ai.provider : undefined, apiKey: ai.keys[ai.provider] || undefined, model: ai.models[ai.provider] || undefined }),
       });
-      const data = (await res.json()) as TailorResult & { error?: string };
+      const data = (await res.json()) as TailorResult & { error?: string; errorStatus?: number; errorModel?: string };
       if (!res.ok) throw new Error(data.error ?? "Something went wrong");
-      if (data.error)
-        setError(
-          /high demand|overloaded|unavailable|try again later/i.test(data.error)
-            ? "The AI model is busy right now (a problem on the provider's end, not how often you tailor). We retried for about a minute. Showing offline ranking for now; hit Redo in a few minutes."
-            : `AI request failed (${data.error}). Showing offline ranking instead.`,
-        );
+      if (data.error) setError(explainAiError(data.error, data.errorStatus, data.errorModel));
       setTailor(job.id, data);
       const st = useApp.getState().status[job.id];
       if (!st || st === "saved" || st === "skipped") setStatus(job.id, "tailored");
@@ -566,4 +561,15 @@ ${r.bullets.map((b) => `- ${b.tailored}`).join("\n")}
 ## Skills to lead with
 ${r.highlightSkills.join(" · ")}
 ${r.coverNote ? `\n## Note to the hiring manager\n${r.coverNote}\n` : ""}`;
+}
+
+/** Says what actually went wrong, keeping the provider's own words so nothing is hidden. */
+function explainAiError(raw: string, status?: number, model?: string) {
+  const said = ` (provider said: "${raw.slice(0, 220)}")`
+  const m = model ? ` ${model}` : "";
+  if (/per ?day|daily|quota|exceeded|billing|RESOURCE_EXHAUSTED/i.test(raw) || status === 429)
+    return `Your key has hit a rate limit or quota for${m || " this model"}${said}. Free-tier daily quotas reset at midnight Pacific time. Try again later, switch model or provider in Settings → Resume & AI, or add a key with more quota. Showing offline ranking for now.`;
+  if (/high demand|overloaded|unavailable|try again later/i.test(raw) || status === 503 || status === 529)
+    return `The model${m} is overloaded on the provider's side right now, which isn't caused by how often you tailor${said}. We retried for about a minute. Hit Redo in a few minutes, or pick another model in Settings → Resume & AI. Showing offline ranking for now.`;
+  return `AI request failed${status ? ` (HTTP ${status})` : ""}${m ? ` on${m}` : ""}${said}. Showing offline ranking instead.`;
 }

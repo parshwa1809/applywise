@@ -26,13 +26,19 @@ export async function POST(req: Request) {
       { headers: { "cache-control": "no-store" } },
     );
   } catch (e) {
+    // keep the real cause visible (Vercel logs + the response) — a generic message made this impossible to debug
+    console.error("[pdf] generation failed:", e);
+    const detail = String(e instanceof Error ? e.message : e)
+      .split("\n")
+      .find((l) => l.trim())
+      ?.slice(0, 300);
     const status = e instanceof PdfLayoutError ? 422 : 500;
     const message =
       e instanceof PdfLayoutError
         ? e.message
         : /Executable doesn't exist|browserType\.launch/i.test(String(e))
           ? "PDF engine isn't installed. Run: npx playwright install chromium"
-          : "Couldn't build the PDF.";
-    return Response.json({ error: message }, { status });
+          : `Couldn't build the PDF${detail ? ` (${detail})` : ""}.`;
+    return Response.json({ error: message, detail }, { status });
   }
 }
