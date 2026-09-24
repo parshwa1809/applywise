@@ -174,7 +174,7 @@ describe("editing roles after a scan", () => {
     expect(scanGaps(scope, now({ locations: ["Dallas", "Austin"] }))?.cities).toEqual(["Austin"]);
     expect(scanGaps(scope, now({ locations: ["Dallas", "Austin"], paidOn: false }))).toBeNull();
   });
-  it("old scans without a recorded scope never nag", () => {
-    expect(scanGaps(undefined, now({ roles: ["Anything"] }))).toBeNull();
+  it("scans from before scope tracking ask for one rescan", () => {
+    expect(scanGaps(undefined, now({ roles: ["Anything"] }))).toMatchObject({ legacy: true });
   });
 });

@@ -1,6 +1,13 @@
 "use client";
 
-import { animate, AnimatePresence, motion, useMotionValue, useTransform, type PanInfo } from "motion/react";
+import {
+  animate,
+  AnimatePresence,
+  motion,
+  useMotionValue,
+  useTransform,
+  type PanInfo,
+} from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { companyKey, useApp, type Status } from "@/lib/store";
 import type { Job } from "@/lib/types";
@@ -25,12 +32,18 @@ export default function Discover() {
   // settings changes the saved pool can't answer (new roles, companies, cities for paid search) → ask for a rescan
   const gaps = useMemo(
     () =>
-      scanGaps(lastScan?.scope, {
-        roles: filters.roles,
-        companies: srcSettings.boards ? resolveCompanies(selected, custom).map(companyKey) : [],
-        locations: filters.locations,
-        paidOn: (srcSettings.jsearch.enabled && !!srcSettings.jsearch.apiKey) || (srcSettings.apify.enabled && !!srcSettings.apify.token),
-      }),
+      !lastScan
+        ? null
+        : scanGaps(lastScan.scope, {
+            roles: filters.roles,
+            companies: srcSettings.boards
+              ? resolveCompanies(selected, custom).map(companyKey)
+              : [],
+            locations: filters.locations,
+            paidOn:
+              (srcSettings.jsearch.enabled && !!srcSettings.jsearch.apiKey) ||
+              (srcSettings.apify.enabled && !!srcSettings.apify.token),
+          }),
     [lastScan, filters.roles, filters.locations, selected, custom, srcSettings],
   );
   const set = useApp((s) => s.set);
@@ -45,22 +58,41 @@ export default function Discover() {
   const { visible, hiddenCount, perSource, boardNote } = useMemo(() => {
     const open = Object.values(jobs).filter((j) => !status[j.id]);
     const vis = open.filter((j) => jobVisible(j, filters, now));
-    const count = (ats: string[]) => [open.filter((j) => ats.includes(j.ats)).length, vis.filter((j) => ats.includes(j.ats)).length];
-    const boards = open.filter((j) => j.ats === "greenhouse" || j.ats === "lever" || j.ats === "ashby");
-    const boardsShown = vis.some((j) => j.ats === "greenhouse" || j.ats === "lever" || j.ats === "ashby");
+    const count = (ats: string[]) => [
+      open.filter((j) => ats.includes(j.ats)).length,
+      vis.filter((j) => ats.includes(j.ats)).length,
+    ];
+    const boards = open.filter(
+      (j) => j.ats === "greenhouse" || j.ats === "lever" || j.ats === "ashby",
+    );
+    const boardsShown = vis.some(
+      (j) => j.ats === "greenhouse" || j.ats === "lever" || j.ats === "ashby",
+    );
     return {
       visible: vis,
       hiddenCount: open.length - vis.length,
-      perSource: { "Company boards": count(["greenhouse", "lever", "ashby"]), JSearch: count(["jsearch"]), Apify: count(["apify"]) } as Record<string, number[]>,
-      boardNote: boards.length && !boardsShown ? explainFunnel(funnelFor(boards, filters, now), { maxYears: filters.maxYears || undefined, maxAgeDays: filters.maxAgeDays || undefined }) : null,
+      perSource: {
+        "Company boards": count(["greenhouse", "lever", "ashby"]),
+        JSearch: count(["jsearch"]),
+        Apify: count(["apify"]),
+      } as Record<string, number[]>,
+      boardNote:
+        boards.length && !boardsShown
+          ? explainFunnel(funnelFor(boards, filters, now), {
+              maxYears: filters.maxYears || undefined,
+              maxAgeDays: filters.maxAgeDays || undefined,
+            })
+          : null,
     };
   }, [jobs, status, filters, now]);
 
   const queue = useMemo(() => {
     const list = [...visible];
     const by: Record<Sort, (a: Job, b: Job) => number> = {
-      match: (a, b) => b.match - 0.8 * b.ghost.score - (a.match - 0.8 * a.ghost.score), // fit, discounted by ghost risk
-      new: (a, b) => Date.parse(b.postedAt ?? "0") - Date.parse(a.postedAt ?? "0"),
+      match: (a, b) =>
+        b.match - 0.8 * b.ghost.score - (a.match - 0.8 * a.ghost.score), // fit, discounted by ghost risk
+      new: (a, b) =>
+        Date.parse(b.postedAt ?? "0") - Date.parse(a.postedAt ?? "0"),
       real: (a, b) => a.ghost.score - b.ghost.score || b.match - a.match,
     };
     return list.sort(by[sort]);
@@ -72,7 +104,13 @@ export default function Discover() {
       setStatus(job.id, s);
       setHistory((h) => [...h.slice(-30), job.id]);
       if (dir === "up") set({ openJob: job.id, drawerTab: "tailor" });
-      setToast(dir === "left" ? `Skipped ${job.company}` : dir === "up" ? `Tailoring for ${job.company}…` : `Saved ${job.company} to your board`);
+      setToast(
+        dir === "left"
+          ? `Skipped ${job.company}`
+          : dir === "up"
+            ? `Tailoring for ${job.company}…`
+            : `Saved ${job.company} to your board`,
+      );
     },
     [setStatus, set],
   );
@@ -104,11 +142,17 @@ export default function Discover() {
     <div className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 sm:px-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-display text-4xl font-bold sm:text-5xl">Discover</h1>
+          <h1 className="font-display text-4xl font-bold sm:text-5xl">
+            Discover
+          </h1>
           <p className="mt-1 text-ink-2">
             {lastScan ? (
               <>
-                <Ticker value={queue.length} className="font-semibold text-ink" /> roles to review · scanned {timeAgo(lastScan.at)}
+                <Ticker
+                  value={queue.length}
+                  className="font-semibold text-ink"
+                />{" "}
+                roles to review · scanned {timeAgo(lastScan.at)}
               </>
             ) : (
               "Scanning company boards and your connected sources — no reposted LinkedIn noise."
@@ -121,9 +165,21 @@ export default function Discover() {
             value={sort}
             onChange={setSort}
             options={[
-              { value: "match", label: "Best fit", hint: "Match score with your resume, minus a penalty for ghost-job signals" },
-              { value: "real", label: "Least ghosty", hint: "Most trustworthy listings first (fewest ghost signals), ties broken by match" },
-              { value: "new", label: "Newest", hint: "Most recently posted first" },
+              {
+                value: "match",
+                label: "Best fit",
+                hint: "Match score with your resume, minus a penalty for ghost-job signals",
+              },
+              {
+                value: "real",
+                label: "Least ghosty",
+                hint: "Most trustworthy listings first (fewest ghost signals), ties broken by match",
+              },
+              {
+                value: "new",
+                label: "Newest",
+                hint: "Most recently posted first",
+              },
             ]}
           />
           {progress.running ? (
@@ -134,7 +190,13 @@ export default function Discover() {
             <Magnetic>
               <Button onClick={scan}>
                 <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden>
-                  <path d="M16.5 10A6.5 6.5 0 1 1 14.6 5.4M16.5 3v3.5H13" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
+                  <path
+                    d="M16.5 10A6.5 6.5 0 1 1 14.6 5.4M16.5 3v3.5H13"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    fill="none"
+                    strokeLinecap="round"
+                  />
                 </svg>
                 Rescan
               </Button>
@@ -143,21 +205,40 @@ export default function Discover() {
         </div>
       </div>
 
-      {lastScan?.sources && lastScan.sources.length > 0 && !progress.running && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {lastScan.sources.map((r) => (
-            <span
-              key={r.label}
-              title={r.error ?? (r.skipped ? "JSearch and Apify use your paid quota, so they run at most once a day. Change your search to run them again sooner." : undefined)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${r.error ? "bg-bad/10 text-bad" : "bg-card text-ink-2 ring-1 ring-line"}`}
-            >
-              <span className={`h-1.5 w-1.5 rounded-full ${r.error ? "bg-bad" : r.skipped ? "bg-ink-3" : "bg-good"}`} />
-              {r.label}
-              {r.label === "Company boards" && !r.error ? ` · ${lastScan.reachable}/${lastScan.companies} boards` : ""} · {r.error ? "failed" : r.skipped ? `${r.skipped}` : perSource[r.label] ? `${perSource[r.label][1]} shown of ${perSource[r.label][0]}` : `${r.found} found`}
-            </span>
-          ))}
-        </div>
-      )}
+      {lastScan?.sources &&
+        lastScan.sources.length > 0 &&
+        !progress.running && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {lastScan.sources.map((r) => (
+              <span
+                key={r.label}
+                title={
+                  r.error ??
+                  (r.skipped
+                    ? "JSearch and Apify use your paid quota, so they run at most once a day. Change your search to run them again sooner."
+                    : undefined)
+                }
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${r.error ? "bg-bad/10 text-bad" : "bg-card text-ink-2 ring-1 ring-line"}`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${r.error ? "bg-bad" : r.skipped ? "bg-ink-3" : "bg-good"}`}
+                />
+                {r.label}
+                {r.label === "Company boards" && !r.error
+                  ? ` · ${lastScan.reachable}/${lastScan.companies} boards`
+                  : ""}{" "}
+                ·{" "}
+                {r.error
+                  ? "failed"
+                  : r.skipped
+                    ? `${r.skipped}`
+                    : perSource[r.label]
+                      ? `${perSource[r.label][1]} shown of ${perSource[r.label][0]}`
+                      : `${r.found} found`}
+              </span>
+            ))}
+          </div>
+        )}
 
       {gaps && !progress.running && (
         <motion.div
@@ -166,27 +247,58 @@ export default function Discover() {
           className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border border-brand/40 bg-brand-soft p-4 text-sm text-ink"
         >
           <div className="min-w-0 flex-1">
-            <div className="font-semibold">
-              Rescan to collect jobs for what you added:{" "}
-              {[
-                gaps.roles.length ? `${gaps.roles.length === 1 ? "role" : "roles"} ${gaps.roles.map((r) => `“${r}”`).join(", ")}` : "",
-                gaps.companies ? `${gaps.companies} new ${gaps.companies === 1 ? "company" : "companies"}` : "",
-                gaps.cities.length ? `${gaps.cities.length === 1 ? "city" : "cities"} ${gaps.cities.join(", ")} (for JSearch/Apify)` : "",
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </div>
-            <div className="mt-0.5 text-ink-2">
-              Everything else, like removed or narrowed roles, work mode, cities, freshness, experience and skip words, already applies to the jobs you have.
-              {(srcSettings.jsearch.enabled || srcSettings.apify.enabled) && gaps.roles.length + gaps.cities.length > 0 ? " JSearch and Apify will run again, since the search changed." : ""}
-            </div>
+            {gaps.legacy ? (
+              <>
+                <div className="font-semibold">
+                  Rescan once to finish updating Applywise
+                </div>
+                <div className="mt-0.5 text-ink-2">
+                  Your last scan ran before this version. After one rescan,
+                  Applywise can tell you when a change (like adding a role or
+                  company) needs a new scan, and everything else filters
+                  instantly.
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="font-semibold">
+                  Rescan to collect jobs for what you added:{" "}
+                  {[
+                    gaps.roles.length
+                      ? `${gaps.roles.length === 1 ? "role" : "roles"} ${gaps.roles.map((r) => `“${r}”`).join(", ")}`
+                      : "",
+                    gaps.companies
+                      ? `${gaps.companies} new ${gaps.companies === 1 ? "company" : "companies"}`
+                      : "",
+                    gaps.cities.length
+                      ? `${gaps.cities.length === 1 ? "city" : "cities"} ${gaps.cities.join(", ")} (for JSearch/Apify)`
+                      : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </div>
+                <div className="mt-0.5 text-ink-2">
+                  Everything else, like removed or narrowed roles, work mode,
+                  cities, freshness, experience and skip words, already applies
+                  to the jobs you have.
+                  {(srcSettings.jsearch.enabled || srcSettings.apify.enabled) &&
+                  gaps.roles.length + gaps.cities.length > 0
+                    ? " JSearch and Apify will run again, since the search changed."
+                    : ""}
+                </div>
+              </>
+            )}
           </div>
           <Button onClick={scan}>Rescan now</Button>
         </motion.div>
       )}
 
       <ScanBar progress={progress} />
-      {progress.error && <div className="mt-4 rounded-2xl border border-bad/30 bg-bad/10 p-4 text-sm text-bad">{progress.error}</div>}
+      {progress.error && (
+        <div className="mt-4 rounded-2xl border border-bad/30 bg-bad/10 p-4 text-sm text-bad">
+          {progress.error}
+        </div>
+      )}
       {!progress.error && !!progress.warnings?.length && (
         <div className="mt-4 rounded-2xl border border-warn/30 bg-warn/10 p-4 text-sm text-warn">
           {progress.warnings.map((w) => (
@@ -200,12 +312,19 @@ export default function Discover() {
             {boardNote && <div>ⓘ {boardNote}</div>}
             {hiddenCount > 0 && (
               <div>
-                ⓘ {hiddenCount} more job{hiddenCount === 1 ? "" : "s"} already found {hiddenCount === 1 ? "is" : "are"} hidden by your filters (roles, work mode, cities, US-only, freshness, experience). Changing them updates this deck instantly, with no rescan.
+                ⓘ {hiddenCount} more job{hiddenCount === 1 ? "" : "s"} already
+                found {hiddenCount === 1 ? "is" : "are"} hidden by your filters
+                (roles, work mode, cities, US-only, freshness, experience).
+                Changing them updates this deck instantly, with no rescan.
               </div>
             )}
           </div>
           {hiddenCount > 0 && (
-            <button type="button" onClick={() => set({ view: "settings", settingsTab: "search" })} className="shrink-0 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-ink hover:bg-bg-2">
+            <button
+              type="button"
+              onClick={() => set({ view: "settings", settingsTab: "search" })}
+              className="shrink-0 rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-ink hover:bg-bg-2"
+            >
               Adjust filters
             </button>
           )}
@@ -227,7 +346,12 @@ export default function Discover() {
                     key={job.id}
                     className="absolute inset-0"
                     initial={{ scale: 0.85, y: 40, opacity: 0 }}
-                    animate={{ scale: 1 - depth * 0.05, y: depth * 22, opacity: 1, filter: `brightness(${1 - depth * 0.04})` }}
+                    animate={{
+                      scale: 1 - depth * 0.05,
+                      y: depth * 22,
+                      opacity: 1,
+                      filter: `brightness(${1 - depth * 0.04})`,
+                    }}
                     transition={spring}
                     style={{ zIndex: 10 - depth }}
                   >
@@ -236,31 +360,72 @@ export default function Discover() {
                 );
               })}
           </AnimatePresence>
-          {!top && <EmptyDeck running={progress.running} hasScan={!!lastScan} hidden={hiddenCount} onScan={scan} />}
+          {!top && (
+            <EmptyDeck
+              running={progress.running}
+              hasScan={!!lastScan}
+              hidden={hiddenCount}
+              onScan={scan}
+            />
+          )}
         </div>
 
         <aside className="space-y-4">
           <div className="rounded-3xl border border-line bg-card p-5">
-            <div className="text-xs font-bold uppercase tracking-wider text-ink-3">Controls</div>
+            <div className="text-xs font-bold uppercase tracking-wider text-ink-3">
+              Controls
+            </div>
             <div className="mt-4 grid grid-cols-3 gap-2">
-              <ActionBtn label="Skip" hint="←" tone="coral" disabled={!top} onClick={() => top && flingTop("left")}>
+              <ActionBtn
+                label="Skip"
+                hint="←"
+                tone="coral"
+                disabled={!top}
+                onClick={() => top && flingTop("left")}
+              >
                 <path d="M5 5l10 10M15 5L5 15" />
               </ActionBtn>
-              <ActionBtn label="Tailor" hint="↑" tone="brand" disabled={!top} onClick={() => top && flingTop("up")}>
+              <ActionBtn
+                label="Tailor"
+                hint="↑"
+                tone="brand"
+                disabled={!top}
+                onClick={() => top && flingTop("up")}
+              >
                 <path d="M10 3l1.8 4.4L16 9l-4.2 1.6L10 15l-1.8-4.4L4 9l4.2-1.6z" />
               </ActionBtn>
-              <ActionBtn label="Save" hint="→" tone="lime" disabled={!top} onClick={() => top && flingTop("right")}>
+              <ActionBtn
+                label="Save"
+                hint="→"
+                tone="lime"
+                disabled={!top}
+                onClick={() => top && flingTop("right")}
+              >
                 <path d="M4 10.5l4 4L16 6" />
               </ActionBtn>
             </div>
-            <button onClick={undo} disabled={!history.length} className="mt-3 w-full rounded-xl py-2 text-sm font-semibold text-ink-2 hover:bg-bg-2 disabled:opacity-40">
+            <button
+              onClick={undo}
+              disabled={!history.length}
+              className="mt-3 w-full rounded-xl py-2 text-sm font-semibold text-ink-2 hover:bg-bg-2 disabled:opacity-40"
+            >
               ↶ Undo <span className="text-ink-3">(Z)</span>
             </button>
-            <p className="mt-3 text-xs leading-relaxed text-ink-3">Drag the card: fling right to save, left to skip, up to tailor your resume right away. Space opens details.</p>
+            <p className="mt-3 text-xs leading-relaxed text-ink-3">
+              Drag the card: fling right to save, left to skip, up to tailor
+              your resume right away. Space opens details.
+            </p>
           </div>
           <div className="rounded-3xl bg-ink p-5 text-bg">
-            <div className="font-display text-lg font-bold">Where these come from</div>
-            <p className="mt-2 text-sm opacity-80">Company boards (Greenhouse, Lever, Ashby) are read directly. With your keys, JSearch adds Indeed, ZipRecruiter, Dice and more, and Apify adds 175k+ career sites. Duplicates are merged, and ghost signals flag stale or evergreen listings.</p>
+            <div className="font-display text-lg font-bold">
+              Where these come from
+            </div>
+            <p className="mt-2 text-sm opacity-80">
+              Company boards (Greenhouse, Lever, Ashby) are read directly. With
+              your keys, JSearch adds Indeed, ZipRecruiter, Dice and more, and
+              Apify adds 175k+ career sites. Duplicates are merged, and ghost
+              signals flag stale or evergreen listings.
+            </p>
           </div>
         </aside>
       </div>
@@ -278,7 +443,15 @@ export default function Discover() {
           </motion.div>
         )}
       </AnimatePresence>
-      <Keys onKey={(k) => (k === "z" ? undo() : top && k === " " ? set({ openJob: top.id, drawerTab: "job" }) : top && flingTop(k as Dir))} />
+      <Keys
+        onKey={(k) =>
+          k === "z"
+            ? undo()
+            : top && k === " "
+              ? set({ openJob: top.id, drawerTab: "job" })
+              : top && flingTop(k as Dir)
+        }
+      />
     </div>
   );
 }
@@ -289,7 +462,13 @@ function flingTop(d: Dir) {
   flingers.forEach((f) => f(d));
 }
 
-function SwipeCard({ job, onDecide }: { job: Job; onDecide: (j: Job, d: Dir) => void }) {
+function SwipeCard({
+  job,
+  onDecide,
+}: {
+  job: Job;
+  onDecide: (j: Job, d: Dir) => void;
+}) {
   const x = useMotionValue(0);
   const y = useMotionValue(0);
   const rotate = useTransform(x, [-300, 0, 300], [-18, 0, 18]);
@@ -308,7 +487,10 @@ function SwipeCard({ job, onDecide }: { job: Job; onDecide: (j: Job, d: Dir) => 
         animate(y, -900, { ...opts, velocity: Math.min(vy, -800) });
         animate(x, x.get() * 1.5, opts);
       } else {
-        animate(x, d === "right" ? W : -W, { ...opts, velocity: d === "right" ? Math.max(vx, 900) : Math.min(vx, -900) });
+        animate(x, d === "right" ? W : -W, {
+          ...opts,
+          velocity: d === "right" ? Math.max(vx, 900) : Math.min(vx, -900),
+        });
         animate(y, y.get() + vy * 0.15, opts);
       }
       setTimeout(() => onDecide(job, d), 260);
@@ -323,7 +505,8 @@ function SwipeCard({ job, onDecide }: { job: Job; onDecide: (j: Job, d: Dir) => 
 
   const onEnd = (_: unknown, info: PanInfo) => {
     const { offset: o, velocity: v } = info;
-    if (o.y < -130 || (v.y < -800 && Math.abs(o.x) < 120)) fling("up", v.x, v.y);
+    if (o.y < -130 || (v.y < -800 && Math.abs(o.x) < 120))
+      fling("up", v.x, v.y);
     else if (o.x > 130 || v.x > 700) fling("right", v.x, v.y);
     else if (o.x < -130 || v.x < -700) fling("left", v.x, v.y);
   };
@@ -344,40 +527,93 @@ function SwipeCard({ job, onDecide }: { job: Job; onDecide: (j: Job, d: Dir) => 
       transition={spring}
     >
       <JobCard job={job} />
-      <Stamp style={{ opacity: saveO }} className="left-6 top-8 -rotate-12 border-good text-good">
+      <Stamp
+        style={{ opacity: saveO }}
+        className="left-6 top-8 -rotate-12 border-good text-good"
+      >
         SAVE
       </Stamp>
-      <Stamp style={{ opacity: skipO }} className="right-6 top-8 rotate-12 border-coral text-coral">
+      <Stamp
+        style={{ opacity: skipO }}
+        className="right-6 top-8 rotate-12 border-coral text-coral"
+      >
         SKIP
       </Stamp>
-      <Stamp style={{ opacity: tailorO }} className="bottom-10 left-1/2 -translate-x-1/2 border-brand text-brand">
+      <Stamp
+        style={{ opacity: tailorO }}
+        className="bottom-10 left-1/2 -translate-x-1/2 border-brand text-brand"
+      >
         TAILOR ✦
       </Stamp>
     </motion.div>
   );
 }
 
-function Stamp({ children, className, style }: { children: React.ReactNode; className: string; style: { opacity: import("motion/react").MotionValue<number> } }) {
+function Stamp({
+  children,
+  className,
+  style,
+}: {
+  children: React.ReactNode;
+  className: string;
+  style: { opacity: import("motion/react").MotionValue<number> };
+}) {
   return (
-    <motion.div style={style} className={`pointer-events-none absolute rounded-xl border-4 bg-card/80 px-4 py-1 font-display text-3xl font-extrabold tracking-wider backdrop-blur ${className}`}>
+    <motion.div
+      style={style}
+      className={`pointer-events-none absolute rounded-xl border-4 bg-card/80 px-4 py-1 font-display text-3xl font-extrabold tracking-wider backdrop-blur ${className}`}
+    >
       {children}
     </motion.div>
   );
 }
 
-function ActionBtn({ children, label, hint, tone, onClick, disabled }: { children: React.ReactNode; label: string; hint: string; tone: "coral" | "brand" | "lime"; onClick: () => void; disabled: boolean }) {
-  const bg = tone === "coral" ? "bg-coral text-white" : tone === "brand" ? "bg-brand text-brand-ink" : "bg-lime text-[#17151f]";
+function ActionBtn({
+  children,
+  label,
+  hint,
+  tone,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  label: string;
+  hint: string;
+  tone: "coral" | "brand" | "lime";
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  const bg =
+    tone === "coral"
+      ? "bg-coral text-white"
+      : tone === "brand"
+        ? "bg-brand text-brand-ink"
+        : "bg-lime text-[#17151f]";
   return (
     <motion.button
-      whileHover={disabled ? undefined : { y: -3, rotate: tone === "coral" ? -4 : tone === "lime" ? 4 : 0 }}
+      whileHover={
+        disabled
+          ? undefined
+          : { y: -3, rotate: tone === "coral" ? -4 : tone === "lime" ? 4 : 0 }
+      }
       whileTap={disabled ? undefined : { scale: 0.85 }}
       transition={spring}
       onClick={onClick}
       disabled={disabled}
       className="flex flex-col items-center gap-1.5 disabled:opacity-40"
     >
-      <span className={`grid h-14 w-14 place-items-center rounded-2xl shadow-soft ${bg}`}>
-        <svg viewBox="0 0 20 20" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <span
+        className={`grid h-14 w-14 place-items-center rounded-2xl shadow-soft ${bg}`}
+      >
+        <svg
+          viewBox="0 0 20 20"
+          className="h-6 w-6"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
           {children}
         </svg>
       </span>
@@ -388,28 +624,57 @@ function ActionBtn({ children, label, hint, tone, onClick, disabled }: { childre
   );
 }
 
-function ScanBar({ progress }: { progress: ReturnType<typeof useScan>["progress"] }) {
+function ScanBar({
+  progress,
+}: {
+  progress: ReturnType<typeof useScan>["progress"];
+}) {
   return (
     <AnimatePresence>
       {progress.running && (
-        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={spring} className="overflow-hidden">
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={spring}
+          className="overflow-hidden"
+        >
           <div className="mt-6 rounded-3xl border border-line bg-card p-5">
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2 font-semibold">
-                <motion.span className="inline-block h-2.5 w-2.5 rounded-full bg-brand" animate={{ scale: [1, 1.6, 1], opacity: [1, 0.5, 1] }} transition={{ repeat: Infinity, duration: 1 }} />
+                <motion.span
+                  className="inline-block h-2.5 w-2.5 rounded-full bg-brand"
+                  animate={{ scale: [1, 1.6, 1], opacity: [1, 0.5, 1] }}
+                  transition={{ repeat: Infinity, duration: 1 }}
+                />
                 Scanning {progress.done}/{progress.total} sources
               </div>
               <div className="text-ink-2">
-                <Ticker value={progress.found} className="font-bold text-ink" /> matches
+                <Ticker value={progress.found} className="font-bold text-ink" />{" "}
+                matches
               </div>
             </div>
             <div className="mt-3 h-3 overflow-hidden rounded-full bg-bg-2">
-              <motion.div className="h-full rounded-full bg-gradient-to-r from-brand via-sky to-lime" animate={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} transition={{ type: "spring", stiffness: 60, damping: 18 }} />
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-r from-brand via-sky to-lime"
+                animate={{
+                  width: `${(progress.done / Math.max(1, progress.total)) * 100}%`,
+                }}
+                transition={{ type: "spring", stiffness: 60, damping: 18 }}
+              />
             </div>
             <div className="mt-3 flex h-6 gap-2 overflow-hidden">
               <AnimatePresence mode="popLayout">
                 {progress.current.map((n) => (
-                  <motion.span key={n} layout initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} transition={spring} className="rounded-full bg-bg-2 px-2.5 py-0.5 text-xs font-semibold text-ink-2">
+                  <motion.span
+                    key={n}
+                    layout
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -20, opacity: 0 }}
+                    transition={spring}
+                    className="rounded-full bg-bg-2 px-2.5 py-0.5 text-xs font-semibold text-ink-2"
+                  >
                     {n}
                   </motion.span>
                 ))}
@@ -422,7 +687,17 @@ function ScanBar({ progress }: { progress: ReturnType<typeof useScan>["progress"
   );
 }
 
-function EmptyDeck({ running, hasScan, hidden, onScan }: { running: boolean; hasScan: boolean; hidden: number; onScan: () => void }) {
+function EmptyDeck({
+  running,
+  hasScan,
+  hidden,
+  onScan,
+}: {
+  running: boolean;
+  hasScan: boolean;
+  hidden: number;
+  onScan: () => void;
+}) {
   const sources = useApp((s) => s.sources);
   const set = useApp((s) => s.set);
   const missing = [
@@ -432,12 +707,28 @@ function EmptyDeck({ running, hasScan, hidden, onScan }: { running: boolean; has
   const filtered = hasScan && !running && hidden > 0;
   const nudge = hasScan && !running && !filtered && missing.length > 0;
   return (
-    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="grid h-full place-items-center rounded-[28px] border-2 border-dashed border-line p-8 text-center">
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="grid h-full place-items-center rounded-[28px] border-2 border-dashed border-line p-8 text-center"
+    >
       <div>
-        <motion.div animate={{ y: [0, -10, 0], rotate: [0, -6, 6, 0] }} transition={{ repeat: Infinity, duration: 3 }} className="mx-auto mb-4 grid h-20 w-20 place-items-center rounded-3xl bg-brand-soft text-4xl">
+        <motion.div
+          animate={{ y: [0, -10, 0], rotate: [0, -6, 6, 0] }}
+          transition={{ repeat: Infinity, duration: 3 }}
+          className="mx-auto mb-4 grid h-20 w-20 place-items-center rounded-3xl bg-brand-soft text-4xl"
+        >
           {running ? "🔭" : filtered ? "🔍" : hasScan ? "🎉" : "✨"}
         </motion.div>
-        <div className="font-display text-2xl font-bold">{running ? "Finding real roles…" : filtered ? "Your filters hide the rest" : hasScan ? "Inbox zero!" : "Ready when you are"}</div>
+        <div className="font-display text-2xl font-bold">
+          {running
+            ? "Finding real roles…"
+            : filtered
+              ? "Your filters hide the rest"
+              : hasScan
+                ? "Inbox zero!"
+                : "Ready when you are"}
+        </div>
         <p className="mx-auto mt-2 max-w-xs text-ink-2">
           {running
             ? "Cards will drop in as each source comes back."
@@ -448,20 +739,43 @@ function EmptyDeck({ running, hasScan, hidden, onScan }: { running: boolean; has
                 : "Run your first scan to fill the deck."}
         </p>
         {filtered && (
-          <button type="button" onClick={() => set({ view: "settings", settingsTab: "search" })} className="mx-auto mt-5 inline-flex h-11 items-center rounded-full bg-ink px-5 text-[15px] font-semibold text-bg">
+          <button
+            type="button"
+            onClick={() => set({ view: "settings", settingsTab: "search" })}
+            className="mx-auto mt-5 inline-flex h-11 items-center rounded-full bg-ink px-5 text-[15px] font-semibold text-bg"
+          >
             Adjust filters
           </button>
         )}
         {nudge && (
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, ...spring }} className="mx-auto mt-5 max-w-sm rounded-2xl border border-brand/40 bg-brand-soft p-4 text-left">
-            <div className="font-display text-base font-bold text-ink">Want more jobs?</div>
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25, ...spring }}
+            className="mx-auto mt-5 max-w-sm rounded-2xl border border-brand/40 bg-brand-soft p-4 text-left"
+          >
+            <div className="font-display text-base font-bold text-ink">
+              Want more jobs?
+            </div>
             <p className="mt-1 text-sm text-ink-2">
-              Add your {missing.join(" and ")} {missing.length > 1 ? "keys" : "key"} to search far beyond the company boards
-              {missing.includes("JSearch") ? " — JSearch adds Indeed, ZipRecruiter, Dice and more" : ""}
-              {missing.includes("Apify") ? `${missing.includes("JSearch") ? ", and" : " —"} Apify adds 175k+ company career sites` : ""}.
+              Add your {missing.join(" and ")}{" "}
+              {missing.length > 1 ? "keys" : "key"} to search far beyond the
+              company boards
+              {missing.includes("JSearch")
+                ? " — JSearch adds Indeed, ZipRecruiter, Dice and more"
+                : ""}
+              {missing.includes("Apify")
+                ? `${missing.includes("JSearch") ? ", and" : " —"} Apify adds 175k+ company career sites`
+                : ""}
+              .
             </p>
             <div className="mt-3">
-              <Button size="sm" onClick={() => set({ view: "settings", settingsTab: "companies" })}>
+              <Button
+                size="sm"
+                onClick={() =>
+                  set({ view: "settings", settingsTab: "companies" })
+                }
+              >
                 Add {missing.join(" / ")} →
               </Button>
             </div>
@@ -487,9 +801,20 @@ function Keys({ onKey }: { onKey: (k: string) => void }) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.closest("input, textarea, select, [contenteditable]") || e.metaKey || e.ctrlKey) return;
+      if (
+        t.closest("input, textarea, select, [contenteditable]") ||
+        e.metaKey ||
+        e.ctrlKey
+      )
+        return;
       if (document.querySelector("[data-drawer-open]")) return;
-      const map: Record<string, string> = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", z: "z", " ": " " };
+      const map: Record<string, string> = {
+        ArrowLeft: "left",
+        ArrowRight: "right",
+        ArrowUp: "up",
+        z: "z",
+        " ": " ",
+      };
       const k = map[e.key];
       if (k) {
         e.preventDefault();

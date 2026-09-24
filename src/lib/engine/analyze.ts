@@ -187,8 +187,9 @@ export function roleCoveredBy(role: string, scannedRoles: string[]): boolean {
 export function scanGaps(
   scope: { roles: string[]; companies: string[]; locations: string[]; paid: boolean } | undefined,
   now: { roles: string[]; companies: string[]; locations: string[]; paidOn: boolean },
-): { roles: string[]; companies: number; cities: string[] } | null {
-  if (!scope) return null;
+): { roles: string[]; companies: number; cities: string[]; legacy?: boolean } | null {
+  // scans made before scope tracking can't be compared — ask for one rescan so future changes can be
+  if (!scope) return { roles: [], companies: 0, cities: [], legacy: true };
   const roles = now.roles.filter((r) => !roleCoveredBy(r, scope.roles));
   const had = new Set(scope.companies);
   const companies = now.companies.filter((c) => !had.has(c)).length;
