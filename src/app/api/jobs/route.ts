@@ -62,5 +62,7 @@ export async function POST(req: Request) {
     jobs,
     stats,
     companies: perCompany.map((p) => ({ slug: p.company.slug, ats: p.company.ats, name: p.company.name, count: p.count })),
+    // every posting id still on each board that answered, so the board can spot saved jobs that closed
+    live: perCompany.filter((p) => p.ok).map((p) => ({ key: `${p.company.ats}:${p.company.slug}`, ids: p.jobs.map((j) => `${j.ats}:${j.slug}:${j.externalId}`) })),
   });
 }

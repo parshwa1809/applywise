@@ -4,8 +4,11 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { AiProvider, Company, Job, SearchFilters, SourceSettings, TailorResult } from "./types";
 
-export type Stage = "saved" | "tailored" | "applied" | "interview";
-export type Status = Stage | "skipped";
+import { tidy, type ArchiveEntry, type ArchiveReason, type Stage } from "./board";
+
+export type { Stage } from "./board";
+/** "archived" = left the board (closed, stale, no reply, duplicate, or removed); restorable */
+export type Status = Stage | "skipped" | "archived";
 export type View = "home" | "setup" | "discover" | "board" | "settings";
 
 export interface SourceResult {
@@ -69,6 +72,13 @@ interface State {
   custom: Company[];
   jobs: Record<string, Job>;
   status: Record<string, Status>;
+  /** when each job entered its current stage (drives stale / no-reply rules and column order) */
+  statusAt: Record<string, string>;
+  archived: Record<string, ArchiveEntry>;
+  /** board jobs whose posting disappeared from the company board on a later scan */
+  closed: Record<string, string>;
+  /** the job whose posting the user just opened; asks "did you apply?" when they come back */
+  pendingApply: { id: string; at: string } | null;
   tailor: Record<string, TailorResult>;
   notes: Record<string, string>;
   lastScan: ScanStats | null;
@@ -82,6 +92,11 @@ interface State {
   setFilters: (p: Partial<SearchFilters>) => void;
   mergeJobs: (jobs: Job[]) => void;
   setStatus: (id: string, s: Status | null) => void;
+  archive: (id: string, reason: ArchiveReason) => void;
+  restore: (id: string) => void;
+  /** apply the automatic board rules (see lib/board.ts) */
+  tidyBoard: (now?: number) => void;
+  markClosed: (r: { closed: string[]; open: string[] }) => void;
   setTailor: (id: string, r: TailorResult) => void;
   resetAll: () => void;
 }
@@ -100,6 +115,10 @@ const initial = {
   custom: [] as Company[],
   jobs: {} as Record<string, Job>,
   status: {} as Record<string, Status>,
+  statusAt: {} as Record<string, string>,
+  archived: {} as Record<string, ArchiveEntry>,
+  closed: {} as Record<string, string>,
+  pendingApply: null as { id: string; at: string } | null,
   tailor: {} as Record<string, TailorResult>,
   notes: {} as Record<string, string>,
   lastScan: null as ScanStats | null,
@@ -179,9 +198,56 @@ export const useApp = create<State>()(
       setStatus: (id, st) =>
         set((s) => {
           const next = { ...s.status };
-          if (st) next[id] = st;
-          else delete next[id];
-          return { status: next };
+          const at = { ...s.statusAt };
+          const archived = { ...s.archived };
+          if (st) {
+            if (next[id] !== st) at[id] = new Date().toISOString();
+            next[id] = st;
+          } else {
+            delete next[id];
+            delete at[id];
+          }
+          if (st !== "archived") delete archived[id];
+          const pendingApply = s.pendingApply?.id === id && (st === "applied" || st === "interview") ? null : s.pendingApply;
+          return { status: next, statusAt: at, archived, pendingApply };
+        }),
+      archive: (id, reason) =>
+        set((s) => {
+          const from = s.status[id];
+          if (!from || from === "skipped" || from === "archived") return {};
+          return {
+            status: { ...s.status, [id]: "archived" },
+            archived: { ...s.archived, [id]: { from, reason, at: new Date().toISOString() } },
+          };
+        }),
+      restore: (id) =>
+        set((s) => {
+          const a = s.archived[id];
+          if (!a) return {};
+          const archived = { ...s.archived };
+          delete archived[id];
+          const closed = { ...s.closed };
+          if (a.reason === "closed") delete closed[id];
+          // a fresh clock, so it doesn't get archived again straight away
+          return { status: { ...s.status, [id]: a.from }, statusAt: { ...s.statusAt, [id]: new Date().toISOString() }, archived, closed };
+        }),
+      tidyBoard: (now = Date.now()) =>
+        set((s) => {
+          const out = tidy(s, now);
+          const ids = Object.keys(out);
+          if (!ids.length) return {};
+          const status = { ...s.status };
+          for (const id of ids) status[id] = "archived";
+          return { status, archived: { ...s.archived, ...out } };
+        }),
+      markClosed: ({ closed, open }) =>
+        set((s) => {
+          if (!closed.length && !open.some((id) => s.closed[id])) return {};
+          const next = { ...s.closed };
+          const at = new Date().toISOString();
+          for (const id of closed) next[id] ??= at;
+          for (const id of open) delete next[id];
+          return { closed: next };
         }),
       setTailor: (id, r) => set((s) => ({ tailor: { ...s.tailor, [id]: r } })),
       resetAll: () => set({ ...initial, theme: "light" }),
@@ -201,9 +267,17 @@ export const useApp = create<State>()(
           keys: { ...current.ai.keys, ...oldAi?.keys, ...(oldAi?.apiKey && !oldAi.keys ? { [provider]: oldAi.apiKey } : {}) },
           models: { ...current.ai.models, ...oldAi?.models, ...(oldAi?.model && !oldAi.models ? { [provider]: oldAi.model } : {}) },
         };
+        // older saves have no stage dates: start everyone's clock now, so nothing is archived on upgrade
+        const statusAt = { ...(p.statusAt ?? {}) };
+        const now = new Date().toISOString();
+        for (const [id, st] of Object.entries(p.status ?? {})) if (st !== "skipped" && st !== "archived") statusAt[id] ??= now;
         return {
           ...current,
           ...p,
+          statusAt,
+          archived: p.archived ?? {},
+          closed: p.closed ?? {},
+          pendingApply: p.pendingApply ?? null,
           ai,
           filters: {
             ...current.filters,

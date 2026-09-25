@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/pdf": [
       "./node_modules/@sparticuz/chromium/bin/**",
-      "./node_modules/@fontsource/tinos/files/tinos-latin-*.woff2",
+      "./src/lib/resume/fonts/*.woff2",
       // playwright-core reads browsers.json and other files by path at runtime; the tracer misses them
       "./node_modules/playwright-core/**/*",
       "./node_modules/playwright/**/*",

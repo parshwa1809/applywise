@@ -95,7 +95,7 @@ function DrawerBody({ job, onClose, controls }: { job: Job; onClose: () => void;
             { value: "tailor", label: "✦ Tailored resume" },
           ]}
         />
-        <StageSelect value={status && status !== "skipped" ? status : null} onChange={(s, at) => {
+        <StageSelect value={status && status !== "skipped" && status !== "archived" ? status : null} onChange={(s, at) => {
           setStatus(job.id, s);
           if (s === "applied" || s === "interview") confetti(at);
         }} />
@@ -128,6 +128,13 @@ function StageSelect({ value, onChange }: { value: Stage | null; onChange: (s: S
   );
 }
 
+/** Open the posting and remember it, so we can ask "did you apply?" when the user comes back. */
+function openPosting(job: Job) {
+  const st = useApp.getState().status[job.id];
+  if (st !== "applied" && st !== "interview") useApp.setState({ pendingApply: { id: job.id, at: new Date().toISOString() } });
+  window.open(job.url, "_blank", "noopener,noreferrer");
+}
+
 function JobDetails({ job, onTailor }: { job: Job; onTailor: () => void }) {
   const hasResult = useApp((s) => !!s.tailor[job.id]);
   return (
@@ -150,7 +157,7 @@ function JobDetails({ job, onTailor }: { job: Job; onTailor: () => void }) {
         <Button className="flex-1" onClick={onTailor}>
           ✦ {hasResult ? "View tailored resume" : "Tailored resume"}
         </Button>
-        <Button variant="ink" className="flex-1" onClick={() => window.open(job.url, "_blank", "noopener,noreferrer")}>
+        <Button variant="ink" className="flex-1" onClick={() => openPosting(job)}>
           Open posting ↗
         </Button>
       </div>
@@ -177,7 +184,7 @@ function TailorView({ job, auto }: { job: Job; auto: boolean }) {
 
   // a job with a finished tailored resume belongs in the Tailored column (unless it's further along)
   useEffect(() => {
-    if (result && (!status || status === "saved" || status === "skipped")) setStatus(job.id, "tailored");
+    if (result && (!status || status === "saved" || status === "skipped" || status === "archived")) setStatus(job.id, "tailored");
   }, [result, status, job.id, setStatus]);
 
   const run = async () => {
@@ -194,7 +201,7 @@ function TailorView({ job, auto }: { job: Job; auto: boolean }) {
       if (data.error) setError(explainAiError(data.error, data.errorStatus, data.errorModel));
       setTailor(job.id, data);
       const st = useApp.getState().status[job.id];
-      if (!st || st === "saved" || st === "skipped") setStatus(job.id, "tailored");
+      if (!st || st === "saved" || st === "skipped" || st === "archived") setStatus(job.id, "tailored");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {

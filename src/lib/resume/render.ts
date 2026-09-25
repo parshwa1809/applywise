@@ -82,7 +82,7 @@ export function renderResumeHtml(doc: ResumeDoc, layout: LayoutMode = "balanced-
   * { box-sizing: border-box; }
   html, body { padding: 0; margin: 0; background: #fff; }
   body {
-    font-family: "Times New Roman", Times, "Liberation Serif", serif;
+    font-family: "Times New Roman", Times, "Liberation Serif", "Applywise Symbols", serif;
     font-size: 10pt; line-height: ${d.lineHeight}; color: #000; width: 100%;
     word-break: keep-all; overflow-wrap: normal; hyphens: manual;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;

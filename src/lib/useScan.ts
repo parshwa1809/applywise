@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import companiesData from "@/data/companies.json";
+import { closedPostings } from "./board";
 import { companyKey, PAID_COOLDOWN_MS, useApp, type SourceResult } from "./store";
 import { jsearchQueries } from "./engine/aggregators";
 import type { FilterStats } from "./engine/analyze";
@@ -83,7 +84,10 @@ export function useScan() {
     let reachable = 0;
     let postings = 0;
     let boardsFound = 0;
+    // only companies whose boards were actually checked — a stopped scan must not count the rest as scanned
+    const checked: string[] = [];
     const fresh: Job[] = [];
+    const live: { key: string; ids: string[] }[] = [];
     const total = companies.length + extras.length;
     setProgress({ running: true, done: 0, total, found: 0, current: [...extras.map((e) => LABEL[e]), ...(batches[0]?.slice(0, 3).map((c) => c.name) ?? [])] });
 
@@ -167,8 +171,9 @@ export function useScan() {
         setProgress((p) => ({ ...p, current: [...p.current.filter((x) => x === "JSearch" || x === "Apify"), ...batch.slice(0, 4).map((c) => c.name)] }));
         try {
           const st = useApp.getState();
-          const data = await postJson<{ jobs: Job[]; stats: FilterStats; companies: { count: number }[] }>("/api/jobs", { companies: batch, filters: st.filters, resume: st.resume });
+          const data = await postJson<{ jobs: Job[]; stats: FilterStats; companies: { count: number }[]; live?: { key: string; ids: string[] }[] }>("/api/jobs", { companies: batch, filters: st.filters, resume: st.resume });
           take(data.jobs);
+          live.push(...(data.live ?? []));
           boardsFound += data.jobs.length;
           postings += data.stats.total;
           reachable += data.companies.filter((c) => c.count > 0).length;
@@ -176,6 +181,7 @@ export function useScan() {
           /* one failed batch shouldn't stop the scan */
         }
         done += batch.length;
+        checked.push(...batch.map((c) => companyKey(c)));
         setProgress((p) => ({ ...p, done, found }));
       }
     };
@@ -200,9 +206,13 @@ export function useScan() {
         postings,
         kept: fresh.length,
         sources: results,
-        scope: { roles: [...s.filters.roles], companies: companies.map((c) => companyKey(c)), locations: [...s.filters.locations], paid: extras.length > 0 || results.some((r) => r.skipped) },
+        scope: { roles: [...s.filters.roles], companies: checked, locations: [...s.filters.locations], paid: extras.length > 0 || results.some((r) => r.skipped) },
       },
     });
+    // board housekeeping: flag saved jobs whose posting was taken down, then apply the archive rules
+    const after = useApp.getState();
+    after.markClosed(closedPostings(Object.keys(after.status).filter((id) => after.status[id] !== "skipped"), live));
+    after.tidyBoard();
     const failed = results.filter((r) => r.error);
     const ran = results.filter((r) => !r.skipped);
     const notes: string[] = [];

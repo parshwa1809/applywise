@@ -31,22 +31,32 @@ const serverless = () => !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTIO
 
 /**
  * Serverless Linux has no Times New Roman, so Chromium would silently swap fonts and the one-page fit
- * would drift. Tinos is metric-compatible with Times New Roman (same widths), so we register it under
- * that name there. Locally (macOS/Windows) the real font is used, same as job-tailor.
+ * would drift. Liberation Serif is metric-compatible with Times New Roman (same widths), so we register
+ * it under that name there. Unlike the Fontsource "latin" subset we used before, these files keep arrows
+ * (→), math (≤ ≈) and other symbols, which otherwise printed as empty boxes and vanished from the PDF
+ * text that ATS parsers read. Anything still missing (✓ ★ …) falls back to a small DejaVu symbol font.
+ * Locally (macOS/Windows) the real font is used, same as job-tailor.
  */
+export const FONT_DIR = join(process.cwd(), "src/lib/resume/fonts");
 let fontCss: string | null = null;
-function timesFontCss(): string {
+export function timesFontCss(): string {
   if (fontCss !== null) return fontCss;
-  const dir = join(process.cwd(), "node_modules/@fontsource/tinos/files");
-  const face = (weight: number, style: string) => {
+  const face = (family: string, file: string, weight: number, style: string) => {
     try {
-      const b64 = readFileSync(join(dir, `tinos-latin-${weight}-${style}.woff2`)).toString("base64");
-      return `@font-face{font-family:"Times New Roman";font-weight:${weight};font-style:${style};src:url(data:font/woff2;base64,${b64}) format("woff2");}`;
+      const b64 = readFileSync(join(FONT_DIR, file)).toString("base64");
+      return `@font-face{font-family:"${family}";font-weight:${weight};font-style:${style};src:url(data:font/woff2;base64,${b64}) format("woff2");}`;
     } catch {
       return "";
     }
   };
-  fontCss = [face(400, "normal"), face(700, "normal"), face(400, "italic"), face(700, "italic")].join("");
+  fontCss =
+    [
+      face("Times New Roman", "LiberationSerif-Regular.woff2", 400, "normal"),
+      face("Times New Roman", "LiberationSerif-Bold.woff2", 700, "normal"),
+      face("Times New Roman", "LiberationSerif-Italic.woff2", 400, "italic"),
+      face("Times New Roman", "LiberationSerif-BoldItalic.woff2", 700, "italic"),
+      face("Applywise Symbols", "DejaVuSans-Symbols.woff2", 400, "normal"),
+    ].join("");
   return fontCss;
 }
 const withFonts = (html: string) => (serverless() ? html.replace("</head>", `<style>${timesFontCss()}</style></head>`) : html);

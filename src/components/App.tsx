@@ -4,6 +4,7 @@ import { clsx } from "clsx";
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
 import { useEffect, useState } from "react";
 import { useApp, type View } from "@/lib/store";
+import ApplyPrompt from "./ApplyPrompt";
 import Board from "./Board";
 import Discover from "./Discover";
 import Home from "./Home";
@@ -51,6 +52,7 @@ export default function App() {
         )}
       </main>
       <JobDrawer />
+      {ready && <ApplyPrompt />}
     </MotionConfig>
   );
 }
@@ -60,7 +62,7 @@ function Nav() {
   const onboarded = useApp((s) => s.onboarded);
   const status = useApp((s) => s.status);
   const set = useApp((s) => s.set);
-  const saved = Object.values(status).filter((s) => s !== "skipped").length;
+  const saved = Object.values(status).filter((s) => s !== "skipped" && s !== "archived").length;
   const tabs: { id: View; label: string; badge?: number }[] = onboarded
     ? [
         { id: "discover", label: "Discover" },

@@ -262,13 +262,13 @@ export default function Discover() {
             ) : (
               <>
                 <div className="font-semibold">
-                  Rescan to collect jobs for what you added:{" "}
+                  Rescan to collect jobs for:{" "}
                   {[
                     gaps.roles.length
                       ? `${gaps.roles.length === 1 ? "role" : "roles"} ${gaps.roles.map((r) => `“${r}”`).join(", ")}`
                       : "",
                     gaps.companies
-                      ? `${gaps.companies} new ${gaps.companies === 1 ? "company" : "companies"}`
+                      ? `${gaps.companies} ${gaps.companies === 1 ? "company" : "companies"} not scanned yet`
                       : "",
                     gaps.cities.length
                       ? `${gaps.cities.length === 1 ? "city" : "cities"} ${gaps.cities.join(", ")} (for JSearch/Apify)`
